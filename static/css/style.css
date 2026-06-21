@@ -1,0 +1,308 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f0f2f5;
+  color: #1a1a1a;
+  line-height: 1.6;
+  font-size: 16px;
+}
+
+.container {
+  max-width: 80ch;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+/* ── Progress ──────────────────────────────────────────── */
+.progress-bar {
+  font-size: 0.875rem;
+  color: #555;
+  margin-bottom: 1.25rem;
+}
+
+.progress-track {
+  height: 4px;
+  background: #dde1e7;
+  border-radius: 2px;
+  margin-top: 0.4rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ── Instruction banner ────────────────────────────────── */
+.instruction-banner {
+  background: #fefce8;
+  border: 1px solid #fde047;
+  border-radius: 6px;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #713f12;
+}
+
+/* ── Instructions block ────────────────────────────────── */
+.instructions {
+  background: #fff;
+  border-radius: 10px;
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.instructions h3 { margin-bottom: 0.75rem; font-size: 1.1rem; }
+.instructions p  { margin-bottom: 0.5rem; }
+.instructions ul,
+.instructions ol { padding-left: 1.5rem; margin-bottom: 0.5rem; }
+.instructions li { margin-bottom: 0.25rem; }
+.instructions strong { font-weight: 600; }
+
+/* ── Audio row ─────────────────────────────────────────── */
+.audio-row {
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.audio-row.single-audio {
+  justify-content: center;
+}
+
+.audio-row.single-audio .audio-player {
+  flex: 0 0 auto;
+  min-width: 28ch;
+  max-width: 42ch;
+}
+
+.audio-player {
+  flex: 1;
+  background: #fff;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.audio-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #444;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.audio-player audio {
+  width: 100%;
+  display: block;
+}
+
+/* ── Score section ─────────────────────────────────────── */
+.score-section {
+  background: #fff;
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.score-section h4 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+}
+
+.score-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.score-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.score-option:hover { background: #f0f4ff; }
+
+.score-option input[type="radio"] {
+  cursor: pointer;
+  accent-color: #2563eb;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.score-option:has(input:checked) {
+  background: #eff6ff;
+  outline: 1px solid #bfdbfe;
+}
+
+.score-label { font-size: 0.95rem; }
+
+/* ── Transcript ────────────────────────────────────────── */
+.transcript-section {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.transcript-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  margin-bottom: 0.4rem;
+}
+
+.transcript-text {
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+/* *word* → <em> rendered as bold underline */
+.transcript-text em, .transcript-text p em {
+  font-style: normal;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── Error message ─────────────────────────────────────── */
+.error-message {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  padding: 0.7rem 1rem;
+  color: #dc2626;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* ── Submit row ────────────────────────────────────────── */
+.submit-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.submit-btn {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.7rem 2rem;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.submit-btn:hover  { background: #1d4ed8; }
+.submit-btn:active { background: #1e40af; }
+
+kbd {
+  display: inline-block;
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+}
+
+/* ── Login page ────────────────────────────────────────── */
+.login-section {
+  background: #fff;
+  border-radius: 10px;
+  padding: 2rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  max-width: 38ch;
+  margin: 4rem auto 0;
+}
+
+.login-section h2 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  font-size: 1.4rem;
+}
+
+.form-group { margin-bottom: 1.1rem; }
+
+.form-group label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.form-group input[type="email"] {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.form-group input[type="email"]:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+}
+
+/* ── Complete page ─────────────────────────────────────── */
+.complete-section {
+  background: #fff;
+  border-radius: 10px;
+  padding: 2.5rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  text-align: center;
+  max-width: 44ch;
+  margin: 4rem auto 0;
+}
+
+.complete-section h2 { font-size: 1.5rem; margin-bottom: 0.75rem; }
+.complete-section p  { color: #555; margin-bottom: 1.5rem; }
+
+.prolific-btn {
+  display: inline-block;
+  background: #7c3aed;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 0.7rem 2rem;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+
+.prolific-btn:hover { background: #6d28d9; }
+
+/* ── Responsive ────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .audio-row { flex-direction: column; }
+  .audio-row.single-audio .audio-player { max-width: 100%; }
+  .submit-row { justify-content: stretch; }
+  .submit-btn { width: 100%; justify-content: center; }
+}

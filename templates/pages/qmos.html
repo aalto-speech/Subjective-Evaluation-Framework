@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "pages/_test_base.html" import progress_bar, instruction_banner, error_box, submit_row, prefetch_links %}
+
+{% block content %}
+{{ progress_bar(page_num, total_pages, progress_pct) }}
+{% if is_instruction %}{{ instruction_banner() }}{% endif %}
+
+<div class="instructions">{{ instructions_html | safe }}</div>
+
+{{ error_box(error) }}
+
+<form method="POST" action="{{ request.url_for('submit') }}" id="test-form">
+  <input type="hidden" id="target-audio-played" name="target_audio_played" value="false">
+
+  <div class="audio-row single-audio">
+    <div class="audio-player">
+      <span class="audio-label">Sample</span>
+      <audio id="tar-audio" controls preload="auto" src="{{ tar_audio_url }}"></audio>
+    </div>
+  </div>
+
+  <div class="score-section">
+    <div class="score-options">
+      {% for choice in score_choices %}
+      <label class="score-option">
+        <input type="radio" name="score" value="{{ choice.value }}" required>
+        <span class="score-label"><strong>{{ choice.value }}</strong>: {{ choice.label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  {{ submit_row() }}
+</form>
+
+{{ prefetch_links(prefetch_urls) }}
+{% endblock %}

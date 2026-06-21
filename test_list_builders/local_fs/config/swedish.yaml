@@ -1,0 +1,26 @@
+output:
+num_pairs: 20
+seed: 17
+root_dir:
+systems:
+  - Matcha-TTS
+  - F5TTS_v1_Base
+  - original_swedish
+  - tts_swedish
+  - prompt_speech
+  - target_speech
+tests:
+  CMOS:
+    # - ref: original_swedish
+    #   target: tts_swedish
+    - ref: target_speech
+      target: Matcha-TTS
+    - ref: target_speech
+      target: F5TTS_v1_Base
+  SMOS:
+    - ref: prompt_speech
+      target: Matcha-TTS
+      metalst: test_list_builders/metalst/sv_cv_eval.meta.lst
+    - ref: prompt_speech
+      target: F5TTS_v1_Base
+      metalst: test_list_builders/metalst/sv_cv_eval.meta.lst
