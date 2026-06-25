@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -16,6 +17,7 @@ class SessionData:
     url_params: dict
     ref_audio_played: bool = False
     target_audio_played: bool = False
+    created_at: float = 0.0  # epoch timestamp; 0 means "unknown" (old sessions)
 
 
 class SessionStore:
@@ -31,6 +33,8 @@ class SessionStore:
         for p in SESSIONS_DIR.glob("*.json"):
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))
+                # Backward compat: old session files may lack 'created_at'
+                data.setdefault("created_at", p.stat().st_mtime)
                 self._sessions[p.stem] = SessionData(**data)
             except Exception:
                 pass
@@ -49,6 +53,7 @@ class SessionStore:
             current_page=0,
             results=[],
             url_params=url_params,
+            created_at=time.time(),
         )
         self._persist(sid)
         return sid
@@ -73,6 +78,8 @@ class SessionStore:
             return None
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
+            # Backward compat: old session files may lack 'created_at'
+            data.setdefault("created_at", p.stat().st_mtime)
             self._sessions[sid] = SessionData(**data)
             return self._sessions[sid]
         except Exception:

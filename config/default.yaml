@@ -10,6 +10,7 @@ server:
 
 participant_cap: 30
 num_attention: 3
+session_max_age_seconds: 7200  # 2 hours — sessions and cookies expire after this
 
 attention_checks:
   - type: 'attention'

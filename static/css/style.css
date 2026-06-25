@@ -70,14 +70,39 @@ body {
   margin-bottom: 1.25rem;
 }
 
-.audio-row.single-audio {
-  justify-content: center;
+/* ── Unified rating card (no-reference pages) ──────────── */
+.rating-card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 1.75rem 1.5rem 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
 
-.audio-row.single-audio .audio-player {
-  flex: 0 0 auto;
-  min-width: 28ch;
-  max-width: 42ch;
+.rating-card .audio-player {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  margin-bottom: 1.25rem;
+}
+
+.rating-card .audio-player audio {
+  width: 100%;
+}
+
+.rating-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 0 0 1.25rem;
+}
+
+.rating-card .score-section {
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  margin-bottom: 0;
 }
 
 .audio-player {

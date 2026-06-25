@@ -19,35 +19,37 @@
 <form method="POST" action="{{ request.url_for('submit') }}" id="test-form">
   <input type="hidden" id="target-audio-played" name="target_audio_played" value="false">
 
-  <div class="audio-row single-audio">
+  <div class="rating-card">
     <div class="audio-player">
       <span class="audio-label">Sample</span>
-      <audio id="tar-audio" controls preload="auto" src="{{ tar_audio_url }}"></audio>
+      <audio id="tar-audio" controls preload="auto" controlsList="noplaybackrate" src="{{ tar_audio_url }}"></audio>
     </div>
-  </div>
-
-  <div class="score-section">
-    <h4>Naturalness Score</h4>
-    <div class="score-options">
-      {% for choice in score_choices %}
-      <label class="score-option">
-        <input type="radio" name="score" value="{{ choice.value }}" required>
-        <span class="score-label"><strong>{{ choice.value }}</strong>: {{ choice.label }}</span>
-      </label>
-      {% endfor %}
+    <div class="rating-divider"></div>
+    <div class="score-section">
+      <h4>Naturalness Score</h4>
+      <div class="score-options">
+        {% for choice in score_choices %}
+        <label class="score-option">
+          <input type="radio" name="score" value="{{ choice.value }}" required>
+          <span class="score-label"><strong>{{ choice.value }}</strong>: {{ choice.label }}</span>
+        </label>
+        {% endfor %}
+      </div>
     </div>
   </div>
 
   {% if second_score_choices %}
-  <div class="score-section">
-    <h4>Editing Effect Score</h4>
-    <div class="score-options">
-      {% for choice in second_score_choices %}
-      <label class="score-option">
-        <input type="radio" name="editing_score" value="{{ choice.value }}" required>
-        <span class="score-label"><strong>{{ choice.value }}</strong>: {{ choice.label }}</span>
-      </label>
-      {% endfor %}
+  <div class="rating-card">
+    <div class="score-section">
+      <h4>Editing Effect Score</h4>
+      <div class="score-options">
+        {% for choice in second_score_choices %}
+        <label class="score-option">
+          <input type="radio" name="editing_score" value="{{ choice.value }}" required>
+          <span class="score-label"><strong>{{ choice.value }}</strong>: {{ choice.label }}</span>
+        </label>
+        {% endfor %}
+      </div>
     </div>
   </div>
   {% endif %}

@@ -3,6 +3,7 @@ import json
 import math
 import os
 import random
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -167,6 +168,7 @@ def create_app(
     prolific_return_code: Optional[str] = None,
     participant_cap: int = 30,
     audio_roots: Optional[list[str]] = None,
+    session_max_age_seconds: int = 7200,
 ) -> FastAPI:
     app = FastAPI()
     store = SessionStore()
@@ -190,7 +192,16 @@ def create_app(
     def _get_session(sid: Optional[str]):
         if not sid:
             return None
-        return store.get(sid) or store.restore_from_disk(sid)
+        session = store.get(sid) or store.restore_from_disk(sid)
+        if session is None:
+            return None
+        # Check server-side expiration
+        if session_max_age_seconds > 0 and session.created_at > 0:
+            age = time.time() - session.created_at
+            if age > session_max_age_seconds:
+                store.delete(sid)
+                return None
+        return session
 
     def _render_test(request: Request, sid: str, error: Optional[str] = None):
         session = _get_session(sid)
@@ -273,7 +284,7 @@ def create_app(
             test_cases = _sample_session(sampler, instruction_pages, attention_checks, num_attention)
             sid = store.create(prolific_pid, test_cases, url_params)
             resp = RedirectResponse(url="/test", status_code=303)
-            resp.set_cookie("mos_session_id", sid, httponly=True, samesite="lax")
+            resp.set_cookie("mos_session_id", sid, httponly=True, samesite="lax", max_age=session_max_age_seconds)
             return resp
 
         return templates.TemplateResponse("login.html", {"request": request, "error": None})
@@ -301,7 +312,7 @@ def create_app(
         test_cases = _sample_session(sampler, instruction_pages, attention_checks, num_attention)
         sid = store.create(valid_id, test_cases, {})
         resp = RedirectResponse(url="/test", status_code=303)
-        resp.set_cookie("mos_session_id", sid, httponly=True, samesite="lax")
+        resp.set_cookie("mos_session_id", sid, httponly=True, samesite="lax", max_age=session_max_age_seconds)
         return resp
 
     # ------------------------------------------------------------------
@@ -389,6 +400,7 @@ def create_app(
                     "timestamp": datetime.now().isoformat(),
                     "results": session.results,
                 }, f, indent=2, ensure_ascii=False)
+            store.delete(mos_session_id)
             return RedirectResponse(url="/complete", status_code=303)
 
         return RedirectResponse(url="/test", status_code=303)
@@ -404,6 +416,8 @@ def create_app(
     ):
         session = _get_session(mos_session_id)
         is_prolific = bool(session and "@" not in session.user_id)
+        if mos_session_id:
+            store.delete(mos_session_id)
         resp = templates.TemplateResponse("complete.html", {
             "request": request,
             "is_prolific": is_prolific,
@@ -435,7 +449,7 @@ def create_app(
             return JSONResponse({"ok": True, "redirect": "/complete"})
 
         resp = JSONResponse({"ok": True, "redirect": "/test"})
-        resp.set_cookie("mos_session_id", sid, httponly=True, samesite="lax")
+        resp.set_cookie("mos_session_id", sid, httponly=True, samesite="lax", max_age=session_max_age_seconds)
         return resp
 
     return app

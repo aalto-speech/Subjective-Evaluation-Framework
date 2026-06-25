@@ -42,6 +42,7 @@ def main(cfg: DictConfig) -> None:
         prolific_return_code=cfg.get("prolific_return_code", None),
         participant_cap=cfg.get("participant_cap", 30),
         audio_roots=audio_roots,
+        session_max_age_seconds=cfg.get("session_max_age_seconds", 7200),
     )
 
     uvicorn.run(
