@@ -46,7 +46,7 @@ The app is a FastAPI-based Mean Opinion Score (MOS) listening test platform for 
 `main_fastapi.py` — Hydra-configured entry point. `@hydra.main` loads a YAML config from `config/`, creates the FastAPI app via `app.server.create_app()`, and launches it with `uvicorn`. The config specifies the `language`, which selects a page module from `pages/` (e.g. `language: swedish` → `pages.swedish`).
 
 ### Request flow
-1. `GET /` — shows login form, or auto-starts if `?PROLIFIC_PID=` is in the URL.
+1. `GET /` — shows login form, or auto-starts if `?PROLIFIC_PID=` is in the URL. The Prolific path checks: (a) valid cookie → resume, (b) results already exist → block and redirect to `/complete`, (c) active session exists for this PID → restore it, (d) otherwise check cap and create a new session.
 2. `POST /start` — validates email/PID, samples test cases for the session, creates a server-side session, sets a cookie, redirects to `/test`.
 3. `GET /test` — reads the session, builds a context dict from the current test case, renders the appropriate Jinja2 template.
 4. `POST /submit` — validates audio-played flags and score, records the result, advances the page index, saves session to disk, redirects back to `/test` (or `/complete` when done).
@@ -62,6 +62,8 @@ All form submissions use the POST-Redirect-GET pattern, so the browser back butt
 `SessionData` fields: `user_id`, `test_cases`, `current_page`, `results`, `url_params`, `ref_audio_played`, `target_audio_played`, `created_at` (epoch timestamp for expiration checks).
 
 **Session expiration:** `_get_session()` checks `created_at` against `session_max_age_seconds` (config, default 7200). Expired sessions are deleted from memory and disk. The cookie also carries `Max-Age` for browser-side enforcement.
+
+**Participant cap:** `reserve_slot()` / `mark_completed()` / `mark_abandoned()` provide an atomic in-memory counter (`completed_count + in_progress_count`) that replaces the old `glob("results/*.json")` check. Because the methods are synchronous (no `await`), asyncio's cooperative multitasking guarantees the check-and-increment is atomic — no TOCTOU race. Counters are initialized from disk on startup. `find_by_user()` supports PID deduplication by looking up active sessions by user ID.
 
 ### Server (`app/server.py`)
 `create_app(...)` is a factory that returns the configured FastAPI app. It holds the sampler, page module, attention checks, instruction pages, and config values in its closure — no global state.
