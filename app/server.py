@@ -189,7 +189,7 @@ def create_app(
     # Helpers
     # ------------------------------------------------------------------
 
-    def _get_session(sid: Optional[str]):
+    async def _get_session(sid: Optional[str]):
         if not sid:
             return None
         session = store.get(sid) or store.restore_from_disk(sid)
@@ -199,12 +199,12 @@ def create_app(
         if session_max_age_seconds > 0 and session.created_at > 0:
             age = time.time() - session.created_at
             if age > session_max_age_seconds:
-                store.delete(sid)
+                await store.delete(sid)
                 return None
         return session
 
-    def _render_test(request: Request, sid: str, error: Optional[str] = None):
-        session = _get_session(sid)
+    async def _render_test(request: Request, sid: str, error: Optional[str] = None):
+        session = await _get_session(sid)
         if session is None:
             return RedirectResponse(url="/", status_code=303)
         if session.current_page >= len(session.test_cases):
@@ -260,9 +260,14 @@ def create_app(
 
     @app.get("/audio/{file_path:path}")
     async def serve_audio(file_path: str):
+        # Guard against path traversal (e.g. ../../../etc/passwd)
         for root in _audio_roots:
-            full = Path(root) / file_path
-            if full.exists() and full.is_file():
+            root_resolved = Path(root).resolve()
+            full = (root_resolved / file_path).resolve()
+            # Ensure the resolved path is still inside the audio root
+            if not (str(full) + os.sep).startswith(str(root_resolved) + os.sep):
+                continue
+            if full.is_file():  # single stat call — implies exists
                 return FileResponse(
                     str(full),
                     headers={
@@ -282,7 +287,7 @@ def create_app(
         if prolific_pid:
             url_params = dict(request.query_params)
             test_cases = _sample_session(sampler, instruction_pages, attention_checks, num_attention)
-            sid = store.create(prolific_pid, test_cases, url_params)
+            sid = await store.create(prolific_pid, test_cases, url_params)
             resp = RedirectResponse(url="/test", status_code=303)
             resp.set_cookie("mos_session_id", sid, httponly=True, samesite="lax", max_age=session_max_age_seconds)
             return resp
@@ -310,7 +315,7 @@ def create_app(
 
         valid_id = email if email else prolific_pid
         test_cases = _sample_session(sampler, instruction_pages, attention_checks, num_attention)
-        sid = store.create(valid_id, test_cases, {})
+        sid = await store.create(valid_id, test_cases, {})
         resp = RedirectResponse(url="/test", status_code=303)
         resp.set_cookie("mos_session_id", sid, httponly=True, samesite="lax", max_age=session_max_age_seconds)
         return resp
@@ -325,7 +330,7 @@ def create_app(
         error: Optional[str] = None,
         mos_session_id: Optional[str] = Cookie(default=None),
     ):
-        return _render_test(request, mos_session_id, error=error)
+        return await _render_test(request, mos_session_id, error=error)
 
     @app.post("/submit", name="submit")
     async def submit(
@@ -336,7 +341,7 @@ def create_app(
         target_audio_played: str = Form(default="false"),
         mos_session_id: Optional[str] = Cookie(default=None),
     ):
-        session = _get_session(mos_session_id)
+        session = await _get_session(mos_session_id)
         if session is None:
             return RedirectResponse(url="/", status_code=303)
         if session.current_page >= len(session.test_cases):
@@ -349,17 +354,17 @@ def create_app(
 
         # Server-side validation (client JS should prevent these in normal use)
         if target_audio_played != "true":
-            return _render_test(request, mos_session_id,
-                                error="Please finish listening to the audio before submitting.")
+            return await _render_test(request, mos_session_id,
+                                      error="Please finish listening to the audio before submitting.")
         if needs_ref and ref_audio_played != "true":
-            return _render_test(request, mos_session_id,
-                                error="Please finish listening to both audio samples before submitting.")
+            return await _render_test(request, mos_session_id,
+                                      error="Please finish listening to both audio samples before submitting.")
         if score is None:
-            return _render_test(request, mos_session_id,
-                                error="Please select a score before submitting.")
+            return await _render_test(request, mos_session_id,
+                                      error="Please select a score before submitting.")
         if test_type in _EMOS_TYPES and editing_score is None:
-            return _render_test(request, mos_session_id,
-                                error="Please select an editing score before submitting.")
+            return await _render_test(request, mos_session_id,
+                                      error="Please select an editing score before submitting.")
 
         score_int = int(score)
         result: dict = {
@@ -389,7 +394,7 @@ def create_app(
         session.current_page += 1
         session.ref_audio_played = False
         session.target_audio_played = False
-        store.save(mos_session_id)
+        await store.save(mos_session_id)
 
         if session.current_page >= len(session.test_cases):
             os.makedirs("results", exist_ok=True)
@@ -400,7 +405,7 @@ def create_app(
                     "timestamp": datetime.now().isoformat(),
                     "results": session.results,
                 }, f, indent=2, ensure_ascii=False)
-            store.delete(mos_session_id)
+            await store.delete(mos_session_id)
             return RedirectResponse(url="/complete", status_code=303)
 
         return RedirectResponse(url="/test", status_code=303)
@@ -414,10 +419,10 @@ def create_app(
         request: Request,
         mos_session_id: Optional[str] = Cookie(default=None),
     ):
-        session = _get_session(mos_session_id)
+        session = await _get_session(mos_session_id)
         is_prolific = bool(session and "@" not in session.user_id)
         if mos_session_id:
-            store.delete(mos_session_id)
+            await store.delete(mos_session_id)
         resp = templates.TemplateResponse("complete.html", {
             "request": request,
             "is_prolific": is_prolific,
