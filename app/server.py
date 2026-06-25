@@ -323,12 +323,6 @@ def create_app(
         email: str = Form(default=""),
         prolific_pid: str = Form(default=""),
     ):
-        if not store.reserve_slot(participant_cap):
-            return templates.TemplateResponse("login.html", {
-                "request": request,
-                "error": "The maximum number of participants has been reached. Thank you for your interest!",
-            })
-
         if not is_valid_email(email) and not prolific_pid:
             return templates.TemplateResponse("login.html", {
                 "request": request,
@@ -336,6 +330,25 @@ def create_app(
             })
 
         valid_id = email if email else prolific_pid
+
+        # Already completed? Block re-taking.
+        if (RESULTS_DIR / f"{valid_id}_results.json").exists():
+            return RedirectResponse(url="/complete", status_code=303)
+
+        # Active session exists for this ID (different tab / lost cookie)?
+        # Restore it instead of creating a duplicate.
+        existing_sid = store.find_by_user(valid_id)
+        if existing_sid is not None:
+            resp = RedirectResponse(url="/test", status_code=303)
+            resp.set_cookie("mos_session_id", existing_sid, httponly=True, samesite="lax", max_age=session_max_age_seconds)
+            return resp
+
+        if not store.reserve_slot(participant_cap):
+            return templates.TemplateResponse("login.html", {
+                "request": request,
+                "error": "The maximum number of participants has been reached. Thank you for your interest!",
+            })
+
         test_cases = _sample_session(sampler, instruction_pages, attention_checks, num_attention)
         sid = await store.create(valid_id, test_cases, {})
         resp = RedirectResponse(url="/test", status_code=303)

@@ -50,6 +50,7 @@ class SessionStore:
         destination either holds the old content or the new content,
         never a partial write.
         """
+        SESSIONS_DIR.mkdir(exist_ok=True)  # safeguard against runtime deletion
         tmp = path.with_suffix(".tmp")
         tmp.write_text(data, encoding="utf-8")
         tmp.replace(path)
