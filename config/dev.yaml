@@ -1,0 +1,57 @@
+sampler:
+  test_list_path: devset/dev_testlist.json
+  sample_size_per_test: 2
+server:
+  server_name: 127.0.0.1
+  server_port: 52705
+  root_path: ""
+  allowed_paths:
+    - cwd
+
+num_attention: 5
+
+# Need to be fixed
+attention_checks:
+  - type: 'attention'
+    reference: 'audios/attention_check_english/-3.wav'
+    target: 'audios/attention_check_english/-3.wav'
+  - type: 'attention'
+    reference: 'audios/attention_check_english/-2.wav'
+    target: 'audios/attention_check_english/-2.wav'
+  - type: 'attention'
+    reference: 'audios/attention_check_english/-1.wav'
+    target: 'audios/attention_check_english/-1.wav'
+  - type: 'attention'
+    reference: 'audios/attention_check_english/0.wav'
+    target: 'audios/attention_check_english/0.wav'
+  - type: 'attention'
+    reference: 'audios/attention_check_english/1.wav'
+    target: 'audios/attention_check_english/1.wav'
+  - type: 'attention'
+    reference: 'audios/attention_check_english/2.wav'
+    target: 'audios/attention_check_english/2.wav'
+  - type: 'attention'
+    reference: 'audios/attention_check_english/3.wav'
+    target: 'audios/attention_check_english/3.wav'
+
+# Need to be fixed as fresh audio
+instructions:
+  - type: "cmos_instruction"
+    reference: "devset/instructions/ex02_emph_eval_00004.wav"
+    target: "devset/instructions/ex02_emph_eval_00004.wav"
+  - type: "smos_instruction"
+    reference: "devset/instructions/ex01_emph_eval_00004.wav"
+    target: "devset/instructions/ex01_emph_eval_00030.wav"
+  - type: "empha_pref_instruction"
+    reference: "devset/instructions/ex01_emph_eval_00004.wav"
+    target: "devset/instructions/ex02_emph_eval_00004.wav"
+    transcript: "A dishonest *politician* who admits it?"
+  - type: "nmos_instruction"
+    reference: null
+    target: "devset/instructions/ex02_emph_eval_00004.wav"
+
+language: english
+
+hydra:
+  run:
+    dir: ./test_${language}/${now:%Y-%m-%d}/${now:%H-%M-%S}

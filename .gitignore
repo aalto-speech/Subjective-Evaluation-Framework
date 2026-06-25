@@ -9,3 +9,5 @@ test_logs/
 test_audios
 test_audios_mp3
 test_*
+devset/
+devset.zip
