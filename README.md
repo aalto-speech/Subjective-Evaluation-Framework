@@ -1,81 +1,121 @@
-# Gradio_MOS_template
+# Subjective Evaluation Framework
 
-The is a template for using [Gradio](https://www.gradio.app/) to conduct Mean Opinion Score (MOS) evaluation for Speech and Audio Generation.
+A FastAPI-based platform for conducting subjective listening tests (MOS, preference, emphasis) for speech and audio evaluation. Supports Prolific integration and multiple languages.
 
-## Setup environment
+## Setup
 
-We use [uv](https://github.com/astral-sh/uv) for dependency management. Please follow the instruction to install **uv** first.
+We use [uv](https://github.com/astral-sh/uv) for dependency management. Install **uv** first, then:
 
-Then install the dependencies via:
 ```bash
 uv sync
 ```
 
 ## Run locally
-Run the following command:
+
 ```bash
-uv run main.py --config-name CONFIG_NAME [other_overwriting_arguments]
+uv run main_fastapi.py --config-name CONFIG_NAME
+# e.g. uv run main_fastapi.py --config-name dev
 ```
 
-## Prepare Your Test
+For local development, `config/dev.yaml` provides a minimal self-contained test setup using the `devset/` directory.
 
-To setup and run your test, you need to properly prepare your test. Here is a step-by-step guide for this.
+## Prepare your test
 
 ### 1. Prepare your samples
 
-Gather all samples from all the systems you would like to evaluate, and move them under a certain root directory. For example:
+Gather all samples from all systems you would like to evaluate, and organize them under a root directory:
+
 ```
-Top level directory
-- Prompt_Speech_for_TTS
-- Groundtruth_Target_Speech_for_TTS
-- TTS_System_1
-- TTS_System_2
-...
+root_dir/
+├── System_A/
+├── System_B/
+├── GroundTruth/
+└── ...
 ```
 
-### 2. Build the Test List
+### 2. Build the test list
 
-*Test List* is an input JSON file for the Gradio MOS Test suite. An example of it can be found [here](https://github.com/aalto-speech/Gradio_MOS_template/blob/main/test_lists/example.json). The outer keys of the *Test List* are the tests you would like to run, and the corresponding value of the key is a list of lists of object. The nested lists contain all possible test cases you would like to have for one system in this test.
+The *Test List* is a JSON file that defines all test cases. Format:
 
 ```json
 {
-    "CMOS": [ //outer list, a collection of all test cases of all systems in this test type
-        [ // inner list, all test cases of one system in this test type
-            { // 1 testcase
-                ...
-            },
-            ...
-        ],
-        ...
-    ],
-    ...
+  "CMOS": [
+    [
+      { "type": "CMOS", "reference": "path/a.wav", "target": "path/b.wav",
+        "ref_system": "System_A", "target_system": "System_B" }
+    ]
+  ],
+  "empha_pref": [
+    [
+      { "type": "empha_pref", "reference": "path/a.wav", "target": "path/b.wav",
+        "ref_system": "System_A", "target_system": "System_B",
+        "transcript": "She bought a *red* car." }
+    ]
+  ]
 }
 ```
 
-To create such *Test List*, you can refer to one of the example under `test_list_builders`, for example the local filesystem [one](https://github.com/aalto-speech/Gradio_MOS_template/blob/main/test_list_builders/local_fs/generate.py) and its corresponding [configs](https://github.com/aalto-speech/Gradio_MOS_template/tree/main/test_list_builders/local_fs/config). It can be run as:
+Use one of the `test_list_builders/` scripts to generate test lists from your samples:
+
 ```bash
+# Local filesystem
 uv run test_list_builders/local_fs/generate.py \
-    --config_name finnish \ # One of the config name under the test_list_builders config path
+    --config_name CONFIG_NAME \
+    output="YOUR_OUTPUT_DIR" \
+    root_dir="ROOT_DIR_FOR_ALL_SYSTEM_SAMPLES"
+
+# Google Drive
+uv run test_list_builders/google_drive/generate.py \
+    --config_name CONFIG_NAME \
     output="YOUR_OUTPUT_DIR" \
     root_dir="ROOT_DIR_FOR_ALL_SYSTEM_SAMPLES"
 ```
 
-We also have `test_list_builder` for Gdrive or web file server for your reference. Of course, you can create your own `test_list_builder` depending on your case.
+### 3. Configure and run your test
 
-### Run Your Test
+Create a config YAML under `config/` specifying the test list path, language, attention checks, and instruction pages. Then run:
 
-With *Test List* prepared, you can run your test now:
 ```bash
-uv run main.py --config-name CONFIG_NAME # The config name under the `config` path at the root of this project.
+uv run main_fastapi.py --config-name YOUR_CONFIG_NAME
 ```
 
-## Extend different types of test page
+## Test types
 
-The general idea of extending to more test type is to add the new type of page as a subclass of the `TestPage` object and implement the corresponding methods. Then you need to register your new page class at the `PageFactory`. In this way, your new test page will be built automatically when you pass the test type and other metadata to the `MOSTest` in `main.py`.
+| Type | Description | Score range | Audio |
+|---|---|---|---|
+| CMOS | Comparative MOS | −3 to +3 | Reference + Target |
+| SMOS | Speaker similarity MOS | −3 to +3 (+3 offset in analysis) | Reference + Target |
+| NMOS | Naturalness MOS | 1 to 5 | Target only |
+| QMOS | Quality MOS | 1 to 5 | Target only |
+| EMOS | Editing MOS (dual-score) | Two scores | Target only |
+| empha_pref | Emphasis preference | −1 / 0 / +1 | Reference + Target |
 
-Please refer to `pages` folder for more details.
+## Analyze results
 
-## Future Plans
+```bash
+# CMOS/SMOS analysis
+uv run analysis/analysis.py RESULTS_DIRECTORY
 
-- [ ] Provide support for different methods on obtaining `self.test_cases`
-- [ ] Supporting more types of test
+# Preference test analysis
+uv run analysis/analysis_pref.py RESULTS_DIRECTORY
+
+# QMOS analysis
+uv run analysis/qmos_analysis.py -d RESULTS_DIRECTORY
+
+# DNSMOS correlation analysis
+uv run analysis/dnsmos_analysis.py -i TEST_LIST -m MOS_RESULTS
+```
+
+## Extending
+
+### Add a new language
+
+Copy an existing page module (e.g. `pages/english.py`), translate the instruction strings, and set `language: your_language` in your config.
+
+### Add a new test type
+
+1. Subclass `TestPage` or `NoReferencePage` in `pages/english.py`
+2. Implement all abstract methods including `get_template_name()`
+3. Register the class in `PageFactory.PAGE_CLASSES`
+4. Create a corresponding template in `templates/pages/`
+5. Add the type to `_TEMPLATE_MAP` in `app/server.py`

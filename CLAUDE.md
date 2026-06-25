@@ -55,9 +55,13 @@ The app is a FastAPI-based Mean Opinion Score (MOS) listening test platform for 
 All form submissions use the POST-Redirect-GET pattern, so the browser back button never re-submits a score.
 
 ### Session management (`app/session.py`)
-`SessionStore` keeps sessions in memory and also persists each session to `sessions/<uuid>.json` after every submit. On server startup it reloads all session files, so in-progress tests survive server restarts. The session ID is stored in a plain `mos_session_id` cookie (HttpOnly, SameSite=Lax).
+`SessionStore` keeps sessions in memory and also persists each session to `sessions/<uuid>.json` after every submit. On server startup it reloads all session files, so in-progress tests survive server restarts. The session ID is stored in a plain `mos_session_id` cookie (HttpOnly, SameSite=Lax, Max-Age from config).
 
-`SessionData` fields: `user_id`, `test_cases`, `current_page`, `results`, `url_params`, `ref_audio_played`, `target_audio_played`.
+**Persistence is async and atomic:** `create()`, `save()`, and `delete()` are `async` — disk writes are offloaded to a worker thread via `asyncio.to_thread()`. Writes use a temp-file + atomic rename pattern (`.tmp` → `.json`) so a crash mid-write never corrupts the session file.
+
+`SessionData` fields: `user_id`, `test_cases`, `current_page`, `results`, `url_params`, `ref_audio_played`, `target_audio_played`, `created_at` (epoch timestamp for expiration checks).
+
+**Session expiration:** `_get_session()` checks `created_at` against `session_max_age_seconds` (config, default 7200). Expired sessions are deleted from memory and disk. The cookie also carries `Max-Age` for browser-side enforcement.
 
 ### Server (`app/server.py`)
 `create_app(...)` is a factory that returns the configured FastAPI app. It holds the sampler, page module, attention checks, instruction pages, and config values in its closure — no global state.
@@ -65,8 +69,9 @@ All form submissions use the POST-Redirect-GET pattern, so the browser back butt
 Key internals:
 - `_sample_session()` — samples test cases, inserts instruction pages, and interleaves attention checks at evenly-spaced positions (same logic as the old `MOSTest.sample_test_cases_for_session`).
 - `_render_test()` — builds the full Jinja2 context for the current test page and calls `templates.TemplateResponse`.
-- `GET /audio/{file_path:path}` — serves audio files from configured `audio_roots` with `Cache-Control: public, max-age=86400` and `Accept-Ranges` headers.
+- `GET /audio/{file_path:path}` — serves audio files from configured `audio_roots` with `Cache-Control: public, max-age=86400` and `Accept-Ranges` headers. Resolves paths and guards against traversal (e.g. `../../../etc/passwd` → 404). Uses a single `is_file()` call per root (no separate `exists()` check).
 - `POST /api/restore` — called by browser JS to re-hydrate a session from disk after a server restart; sets the session cookie and returns a redirect URL.
+- **Audio controls**: all `<audio>` elements have `controlsList="noplaybackrate"` to disable playback speed adjustment. Download is still allowed.
 
 ### Page system (`pages/`)
 Each language module (e.g. `pages/english.py`, `pages/finnish.py`) defines:
@@ -107,13 +112,12 @@ The `mdemphasis` Jinja2 filter (registered in `create_app`) converts `*word*` ma
 Context keys passed to every test template: `page_num`, `total_pages`, `progress_pct`, `instructions_html`, `ref_audio_url`, `tar_audio_url`, `score_choices`, `second_score_choices` (EMOS only), `transcript` (empha_pref), `edited_transcript` (EMOS), `is_instruction`, `session_state_json`, `error`.
 
 ### Static files (`static/`)
-- `static/css/style.css` — clean semantic CSS, ~80ch centered container, responsive.
+- `static/css/style.css` — clean semantic CSS, ~80ch centered container, responsive. No-reference pages (NMOS, QMOS, EMOS) use a unified `.rating-card` that wraps the audio player and score section with a `.rating-divider` between them.
 - `static/js/app.js` — handles four concerns:
   1. **Audio tracking**: listens for `ended` events on `#ref-audio` and `#tar-audio`, sets hidden form fields `ref_audio_played` / `target_audio_played` to `"true"`.
   2. **Client-side validation**: blocks form submit and shows an inline error if audio hasn't been played or no score is selected.
-  3. **Enter key**: `keydown` listener calls `form.requestSubmit()` on Enter.
-  4. **Browser cache / resume**: on test pages, saves `{session_id, current_page}` to `localStorage` after each render. On the login page, if `localStorage` has a session ID, POSTs to `/api/restore` to re-hydrate the session and redirects to `/test` — allowing users to resume after a network drop or browser restart.
-  5. **Audio prefetch**: calls `new Audio().src = url` for the next two pages' audio files immediately after render.
+  3. **Browser cache / resume**: on test pages, saves `{session_id, current_page}` to `localStorage` after each render. On the login page, if `localStorage` has a session ID, POSTs to `/api/restore` to re-hydrate the session and redirects to `/test` — allowing users to resume after a network drop or browser restart. Clears localStorage on `/complete`.
+  4. **Audio prefetch**: calls `new Audio().src = url` for the next two pages' audio files immediately after render.
 
 ### Test list JSON format
 ```json
@@ -154,4 +158,6 @@ Use `test_list_builders/` scripts to generate these from local files, Google Dri
 - `prolific_return_code`: Prolific completion code for redirect
 - `participant_cap`: maximum number of participants (default 30)
 - `num_attention`: how many attention checks to interleave per session (default 3)
+- `session_max_age_seconds`: session and cookie expiration in seconds (default 7200 = 2 hours)
 - `server.server_name`, `server.server_port`, `server.root_path`, `server.allowed_paths`: uvicorn and audio-serving settings
+- `config/dev.yaml` — self-contained dev setup using `devset/` directory; uses `root_path: ""` so no path prefix is needed on localhost
