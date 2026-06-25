@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 SESSIONS_DIR = Path("sessions")
+RESULTS_DIR = Path("results")
 
 
 @dataclass
@@ -24,8 +25,15 @@ class SessionData:
 class SessionStore:
     def __init__(self):
         self._sessions: dict[str, SessionData] = {}
+        # Atomic slot tracking (all methods touching these are sync — no await
+        # inside them — so asyncio's cooperative multitasking guarantees atomicity)
+        self.completed_count: int = 0
+        self.in_progress_count: int = 0
         SESSIONS_DIR.mkdir(exist_ok=True)
         self._load_from_disk()
+        # Count existing results as completed
+        RESULTS_DIR.mkdir(exist_ok=True)
+        self.completed_count = len(list(RESULTS_DIR.glob("*_results.json")))
 
     def _path(self, sid: str) -> Path:
         return SESSIONS_DIR / f"{sid}.json"
@@ -52,9 +60,16 @@ class SessionStore:
                 data = json.loads(p.read_text(encoding="utf-8"))
                 # Backward compat: old session files may lack 'created_at'
                 data.setdefault("created_at", p.stat().st_mtime)
+                # Skip sessions whose user already completed (server crashed
+                # between writing results and deleting session)
+                user_id = data.get("user_id")
+                if user_id and (RESULTS_DIR / f"{user_id}_results.json").exists():
+                    p.unlink()  # clean up stale session file
+                    continue
                 self._sessions[p.stem] = SessionData(**data)
             except Exception:
                 pass
+        self.in_progress_count = len(self._sessions)
 
     # ------------------------------------------------------------------
     # Public API — all FS writes go through a thread to stay non-blocking
@@ -73,8 +88,59 @@ class SessionStore:
         await self._persist(sid)
         return sid
 
+    # ------------------------------------------------------------------
+    # Slot tracking — all synchronous (no await) for atomicity under asyncio
+    # ------------------------------------------------------------------
+
+    def reserve_slot(self, cap: int) -> bool:
+        """Try to reserve a participant slot. Returns True if one is available.
+
+        Must be called *before* ``create()``.  Because this method contains no
+        ``await``, asyncio's cooperative multitasking guarantees the check-
+        and-increment is atomic — no two coroutines can squeeze through the
+        same slot.
+        """
+        if self.completed_count + self.in_progress_count >= cap:
+            return False
+        self.in_progress_count += 1
+        return True
+
+    def mark_completed(self):
+        """Call when a participant finishes the test and writes results."""
+        self.completed_count += 1
+        self.in_progress_count -= 1
+
+    def mark_abandoned(self):
+        """Call when a session is cleaned up without completing (expired, duplicate, etc.)."""
+        self.in_progress_count -= 1
+
+    # ------------------------------------------------------------------
+
     def get(self, sid: str) -> Optional[SessionData]:
         return self._sessions.get(sid)
+
+    def find_by_user(self, user_id: str) -> Optional[str]:
+        """Return the session ID for *user_id* if an active session exists.
+
+        Searches in-memory sessions first, then falls back to scanning disk
+        for sessions that weren't loaded (e.g. after a restart where the user
+        hasn't resumed yet).
+        """
+        # In-memory lookup
+        for sid, data in self._sessions.items():
+            if data.user_id == user_id:
+                return sid
+        # Disk fallback
+        for p in SESSIONS_DIR.glob("*.json"):
+            if p.stem in self._sessions:
+                continue  # already checked above
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if data.get("user_id") == user_id:
+                    return p.stem
+            except Exception:
+                pass
+        return None
 
     async def save(self, sid: str):
         if sid in self._sessions:

@@ -1,4 +1,3 @@
-import glob
 import json
 import math
 import os
@@ -17,7 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.session import SessionStore
+from app.session import RESULTS_DIR, SessionStore
 from utils import TestCasesSampler, is_valid_email
 
 def _inline(text: str) -> str:
@@ -199,6 +198,7 @@ def create_app(
         if session_max_age_seconds > 0 and session.created_at > 0:
             age = time.time() - session.created_at
             if age > session_max_age_seconds:
+                store.mark_abandoned()
                 await store.delete(sid)
                 return None
         return session
@@ -285,6 +285,29 @@ def create_app(
     async def index(request: Request, mos_session_id: Optional[str] = Cookie(default=None)):
         prolific_pid = request.query_params.get("PROLIFIC_PID")
         if prolific_pid:
+            # 1. Valid cookie? Resume the existing session.
+            session = await _get_session(mos_session_id)
+            if session is not None:
+                return RedirectResponse(url="/test", status_code=303)
+
+            # 2. Already completed? Block re-taking.
+            if (RESULTS_DIR / f"{prolific_pid}_results.json").exists():
+                return RedirectResponse(url="/complete", status_code=303)
+
+            # 3. Active session exists for this PID (lost cookie / different device)?
+            #    Restore it and re-attach the cookie.
+            existing_sid = store.find_by_user(prolific_pid)
+            if existing_sid is not None:
+                resp = RedirectResponse(url="/test", status_code=303)
+                resp.set_cookie("mos_session_id", existing_sid, httponly=True, samesite="lax", max_age=session_max_age_seconds)
+                return resp
+
+            # 4. Brand-new participant — check cap and create.
+            if not store.reserve_slot(participant_cap):
+                return templates.TemplateResponse("login.html", {
+                    "request": request,
+                    "error": "The maximum number of participants has been reached. Thank you for your interest!",
+                })
             url_params = dict(request.query_params)
             test_cases = _sample_session(sampler, instruction_pages, attention_checks, num_attention)
             sid = await store.create(prolific_pid, test_cases, url_params)
@@ -300,8 +323,7 @@ def create_app(
         email: str = Form(default=""),
         prolific_pid: str = Form(default=""),
     ):
-        num_results = len(glob.glob("results/*_results.json"))
-        if num_results >= participant_cap:
+        if not store.reserve_slot(participant_cap):
             return templates.TemplateResponse("login.html", {
                 "request": request,
                 "error": "The maximum number of participants has been reached. Thank you for your interest!",
@@ -405,6 +427,7 @@ def create_app(
                     "timestamp": datetime.now().isoformat(),
                     "results": session.results,
                 }, f, indent=2, ensure_ascii=False)
+            store.mark_completed()
             await store.delete(mos_session_id)
             return RedirectResponse(url="/complete", status_code=303)
 
@@ -421,6 +444,8 @@ def create_app(
     ):
         session = await _get_session(mos_session_id)
         is_prolific = bool(session and "@" not in session.user_id)
+        if session is not None:
+            store.mark_abandoned()
         if mos_session_id:
             await store.delete(mos_session_id)
         resp = templates.TemplateResponse("complete.html", {
