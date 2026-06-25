@@ -1,19 +1,20 @@
 [project]
-name = "gradio-mos-template"
+name = "subjective-evaluation-framework"
 version = "0.1.0"
-description = "Add your description here"
+description = "FastAPI-based MOS listening test platform for speech/audio evaluation"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.115.0",
-    "google>=3.0.0",
+    "fastapi>=0.115.12",
     "google-api-python-client>=2.178.0",
     "google-auth-oauthlib>=1.2.2",
     "hydra-core>=1.3.2",
-    "jinja2>=3.1.0",
+    "jinja2>=3.1.6",
     "markdown>=3.7",
     "matplotlib>=3.10.6",
+    "numpy>=2.3.0",
+    "pandas>=2.3.0",
     "python-multipart>=0.0.20",
     "scipy>=1.16.1",
-    "uvicorn[standard]>=0.34.0",
+    "uvicorn[standard]>=0.34.2",
 ]
