@@ -180,6 +180,34 @@ body {
 
 .score-label { font-size: 0.95rem; }
 
+/* ── Keyboard shortcut badges (score options & audio labels) ── */
+kbd.shortcut-key {
+  display: inline-block;
+  background: linear-gradient(180deg, #fafbfc 0%, #f0f2f5 100%);
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.08rem 0.38rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.4;
+  vertical-align: middle;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+}
+
+.score-option kbd.shortcut-key {
+  margin-right: 0.3rem;
+  min-width: 1.2em;
+  text-align: center;
+}
+
+.audio-label kbd.shortcut-key {
+  margin-left: 0.35rem;
+  font-size: 0.65rem;
+}
+
 /* ── Transcript ────────────────────────────────────────── */
 .transcript-section {
   background: #f8fafc;
@@ -245,6 +273,68 @@ body {
 
 .submit-btn:hover  { background: #1d4ed8; }
 .submit-btn:active { background: #1e40af; }
+
+/* ── Shortcut legend ─────────────────────────────────────── */
+.shortcut-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0;
+  padding: 0.65rem 1rem;
+  margin-bottom: 1rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.shortcut-legend .legend-icon {
+  font-size: 0.95rem;
+  margin-right: 0.5rem;
+  color: #9ca3af;
+}
+
+.shortcut-legend .legend-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  white-space: nowrap;
+}
+
+.shortcut-legend .legend-plus {
+  color: #d1d5db;
+  font-size: 0.7rem;
+}
+
+.shortcut-legend .legend-desc {
+  color: #6b7280;
+  margin-left: 0.15rem;
+}
+
+.shortcut-legend .legend-sep {
+  color: #e5e7eb;
+  margin: 0 0.45rem;
+  font-size: 0.9rem;
+  user-select: none;
+}
+
+.shortcut-legend kbd.shortcut-key {
+  display: inline-block;
+  background: linear-gradient(180deg, #fafbfc 0%, #f0f2f5 100%);
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.08rem 0.38rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.5;
+  vertical-align: middle;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+}
 
 kbd {
   display: inline-block;

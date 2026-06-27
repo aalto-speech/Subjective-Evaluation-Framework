@@ -19,6 +19,16 @@
     });
   }
 
+  // Blur audio elements as soon as they start playing, so keyboard focus
+  // leaves the shadow-DOM play button.  Otherwise number-key shortcuts get
+  // intercepted by the browser's native media-control handling.
+  [refAudioEl, tarAudioEl].forEach(function (el) {
+    if (!el) return;
+    el.addEventListener('play', function () {
+      el.blur();
+    });
+  });
+
   // ── Client-side validation ──────────────────────────────────────────────
   var form = document.getElementById('test-form');
 
@@ -63,12 +73,42 @@
   }
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────────
+  // Capture phase so we intercept BEFORE the audio element's shadow DOM
+  // (play button, etc.) can eat the keypress.  stopPropagation prevents
+  // the event from ever reaching the shadow DOM when we handle it here.
   document.addEventListener('keydown', function (e) {
     var tag = document.activeElement.tagName;
+    var mod = e.ctrlKey || e.metaKey;
+
+    // Ctrl/Cmd+Shift+, — play first audio (Sample A)
+    // Ctrl/Cmd+Shift+. — play second audio (Sample B)
+    // Fall back to the other audio element on no-reference pages.
+    // Shift avoids browser conflicts (e.g. Chrome Cmd+, = settings).
+    if (mod && e.shiftKey && !e.altKey) {
+      if (e.key === ',') {
+        var audio = refAudioEl || tarAudioEl;
+        if (audio) {
+          e.preventDefault();
+          e.stopPropagation();
+          audio.play();
+          return;
+        }
+      }
+      if (e.key === '.') {
+        var audio = tarAudioEl || refAudioEl;
+        if (audio) {
+          e.preventDefault();
+          e.stopPropagation();
+          audio.play();
+          return;
+        }
+      }
+    }
 
     // Enter submits
     if (e.key === 'Enter' && form && tag !== 'BUTTON') {
       e.preventDefault();
+      e.stopPropagation();
       form.requestSubmit();
       return;
     }
@@ -91,11 +131,12 @@
       var idx = digit - 1;
       if (idx < radios.length) {
         e.preventDefault();
+        e.stopPropagation();
         radios[idx].checked = true;
         radios[idx].dispatchEvent(new Event('change', { bubbles: true }));
       }
     }
-  });
+  }, {capture: true});
 
   // ── Audio prefetch ──────────────────────────────────────────────────────
   function prefetchAudio() {
