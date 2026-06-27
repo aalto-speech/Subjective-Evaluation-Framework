@@ -1,3 +1,4 @@
+import asyncio
 import json
 import math
 import os
@@ -171,6 +172,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI()
     store = SessionStore()
+    app.add_event_handler("shutdown", store.close)
     PageFactory = getattr(page_module, "PageFactory")
     _audio_roots = audio_roots or [os.getcwd()]
 
@@ -432,14 +434,21 @@ def create_app(
         await store.save(mos_session_id)
 
         if session.current_page >= len(session.test_cases):
-            os.makedirs("results", exist_ok=True)
-            filename = f"results/{session.user_id}_results.json"
-            with open(filename, "w", encoding="utf-8") as f:
-                json.dump({
-                    "user_id": session.user_id,
-                    "timestamp": datetime.now().isoformat(),
-                    "results": session.results,
-                }, f, indent=2, ensure_ascii=False)
+            # Capture values before dispatching to thread pool
+            _user_id = session.user_id
+            _results = list(session.results)
+
+            def _write_results():
+                os.makedirs("results", exist_ok=True)
+                filename = f"results/{_user_id}_results.json"
+                with open(filename, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "user_id": _user_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "results": _results,
+                    }, f, indent=2, ensure_ascii=False)
+
+            await asyncio.to_thread(_write_results)
             store.mark_completed()
             await store.delete(mos_session_id)
             return RedirectResponse(url="/complete", status_code=303)

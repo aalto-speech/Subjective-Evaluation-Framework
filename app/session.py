@@ -1,5 +1,7 @@
 import asyncio
 import json
+import sqlite3
+import threading
 import time
 import uuid
 from dataclasses import dataclass, asdict
@@ -30,47 +32,70 @@ class SessionStore:
         self.completed_count: int = 0
         self.in_progress_count: int = 0
         SESSIONS_DIR.mkdir(exist_ok=True)
+
+        # --- SQLite setup ---
+        self._db_path = SESSIONS_DIR / "sessions.db"
+        self._db = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        self._db_lock = threading.Lock()
+        self._db.execute("PRAGMA journal_mode=WAL")
+        self._db.execute("""CREATE TABLE IF NOT EXISTS sessions (
+            id         TEXT PRIMARY KEY,
+            user_id    TEXT NOT NULL,
+            data_json  TEXT NOT NULL,
+            created_at REAL NOT NULL
+        )""")
+        self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)"
+        )
+        self._db.commit()
+
         self._load_from_disk()
+
         # Count existing results as completed
         RESULTS_DIR.mkdir(exist_ok=True)
         self.completed_count = len(list(RESULTS_DIR.glob("*_results.json")))
 
-    def _path(self, sid: str) -> Path:
-        return SESSIONS_DIR / f"{sid}.json"
-
     # ------------------------------------------------------------------
-    # Synchronous helpers (called in worker threads or at startup)
+    # Internal helpers (called from the main thread at startup, or from
+    # the thread pool via asyncio.to_thread)
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _write_atomic(path: Path, data: str) -> None:
-        """Write *data* to *path* atomically via a temp-file + rename.
-
-        On POSIX ``tmp.replace(path)`` is an atomic rename — the
-        destination either holds the old content or the new content,
-        never a partial write.
-        """
-        SESSIONS_DIR.mkdir(exist_ok=True)  # safeguard against runtime deletion
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(data, encoding="utf-8")
-        tmp.replace(path)
 
     def _load_from_disk(self):
-        for p in SESSIONS_DIR.glob("*.json"):
+        """Load all sessions from the SQLite database into memory."""
+        rows = self._db.execute(
+            "SELECT id, user_id, data_json FROM sessions"
+        ).fetchall()
+        for sid, user_id, data_json in rows:
             try:
-                data = json.loads(p.read_text(encoding="utf-8"))
-                # Backward compat: old session files may lack 'created_at'
-                data.setdefault("created_at", p.stat().st_mtime)
+                data = json.loads(data_json)
                 # Skip sessions whose user already completed (server crashed
                 # between writing results and deleting session)
-                user_id = data.get("user_id")
-                if user_id and (RESULTS_DIR / f"{user_id}_results.json").exists():
-                    p.unlink()  # clean up stale session file
+                if (RESULTS_DIR / f"{user_id}_results.json").exists():
+                    self._db.execute("DELETE FROM sessions WHERE id = ?", (sid,))
                     continue
-                self._sessions[p.stem] = SessionData(**data)
+                self._sessions[sid] = SessionData(**data)
             except Exception:
                 pass
+        self._db.commit()  # commit any DELETEs from stale-session cleanup
         self.in_progress_count = len(self._sessions)
+
+    # ------------------------------------------------------------------
+    # Thread-pool helpers — these run inside asyncio.to_thread()
+    # ------------------------------------------------------------------
+
+    def _db_upsert(self, sid: str, user_id: str, data_json: str, created_at: float):
+        with self._db_lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO sessions (id, user_id, data_json, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (sid, user_id, data_json, created_at),
+            )
+            self._db.commit()
+
+    def _db_delete(self, sid: str):
+        with self._db_lock:
+            self._db.execute("DELETE FROM sessions WHERE id = ?", (sid,))
+            self._db.commit()
 
     # ------------------------------------------------------------------
     # Public API — all FS writes go through a thread to stay non-blocking
@@ -123,24 +148,23 @@ class SessionStore:
     def find_by_user(self, user_id: str) -> Optional[str]:
         """Return the session ID for *user_id* if an active session exists.
 
-        Searches in-memory sessions first, then falls back to scanning disk
-        for sessions that weren't loaded (e.g. after a restart where the user
+        Searches in-memory sessions first, then falls back to SQLite for
+        sessions that weren't loaded (e.g. after a restart where the user
         hasn't resumed yet).
         """
         # In-memory lookup
         for sid, data in self._sessions.items():
             if data.user_id == user_id:
                 return sid
-        # Disk fallback
-        for p in SESSIONS_DIR.glob("*.json"):
-            if p.stem in self._sessions:
-                continue  # already checked above
-            try:
-                data = json.loads(p.read_text(encoding="utf-8"))
-                if data.get("user_id") == user_id:
-                    return p.stem
-            except Exception:
-                pass
+        # Disk fallback via indexed SQLite query
+        try:
+            row = self._db.execute(
+                "SELECT id FROM sessions WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            if row and row[0] not in self._sessions:
+                return row[0]
+        except Exception:
+            pass
         return None
 
     async def save(self, sid: str):
@@ -149,30 +173,38 @@ class SessionStore:
 
     async def delete(self, sid: str):
         self._sessions.pop(sid, None)
-        p = self._path(sid)
-        if p.exists():
-            await asyncio.to_thread(p.unlink)
+        await asyncio.to_thread(self._db_delete, sid)
 
     def restore_from_disk(self, sid: str) -> Optional[SessionData]:
-        """Re-hydrate a session that exists on disk but not in memory (server restart)."""
-        p = self._path(sid)
-        if not p.exists():
-            return None
+        """Re-hydrate a session that exists in the DB but not in memory (server restart)."""
         try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-            # Backward compat: old session files may lack 'created_at'
-            data.setdefault("created_at", p.stat().st_mtime)
+            row = self._db.execute(
+                "SELECT data_json FROM sessions WHERE id = ?", (sid,)
+            ).fetchone()
+            if not row:
+                return None
+            data = json.loads(row[0])
             self._sessions[sid] = SessionData(**data)
             return self._sessions[sid]
         except Exception:
             return None
+
+    def close(self):
+        """Close the database connection (called on server shutdown)."""
+        with self._db_lock:
+            self._db.close()
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
     async def _persist(self, sid: str):
-        """Serialize *sid* to disk in a worker thread (non-blocking)."""
-        path = self._path(sid)
-        data = json.dumps(asdict(self._sessions[sid]), ensure_ascii=False)
-        await asyncio.to_thread(self._write_atomic, path, data)
+        """Serialize *sid* to the SQLite database in a worker thread (non-blocking)."""
+        if sid not in self._sessions:
+            return
+        # Capture all values before dispatching to thread pool, so we don't
+        # read self._sessions[sid] from a different thread.
+        data_json = json.dumps(asdict(self._sessions[sid]), ensure_ascii=False)
+        user_id = self._sessions[sid].user_id
+        created_at = self._sessions[sid].created_at
+        await asyncio.to_thread(self._db_upsert, sid, user_id, data_json, created_at)
