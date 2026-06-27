@@ -55,15 +55,17 @@ The app is a FastAPI-based Mean Opinion Score (MOS) listening test platform for 
 All form submissions use the POST-Redirect-GET pattern, so the browser back button never re-submits a score.
 
 ### Session management (`app/session.py`)
-`SessionStore` keeps sessions in memory and also persists each session to `sessions/<uuid>.json` after every submit. On server startup it reloads all session files, so in-progress tests survive server restarts. The session ID is stored in a plain `mos_session_id` cookie (HttpOnly, SameSite=Lax, Max-Age from config).
+`SessionStore` keeps sessions in memory (the primary store for hot-path reads) and persists them to a SQLite database (`sessions/sessions.db`) after every submit. On server startup it reloads all sessions from the DB, so in-progress tests survive server restarts. The session ID is stored in a plain `mos_session_id` cookie (HttpOnly, SameSite=Lax, Max-Age from config).
 
-**Persistence is async and atomic:** `create()`, `save()`, and `delete()` are `async` — disk writes are offloaded to a worker thread via `asyncio.to_thread()`. Writes use a temp-file + atomic rename pattern (`.tmp` → `.json`) so a crash mid-write never corrupts the session file.
+**Persistence is async and atomic:** `create()`, `save()`, and `delete()` are `async` — disk writes are offloaded to a worker thread via `asyncio.to_thread()`. SQLite's WAL mode and `INSERT OR REPLACE` provide atomic, crash-safe persistence without the temp-file pattern. A `threading.Lock` serializes DB access from the thread pool.
+
+**Schema:** `sessions(id TEXT PK, user_id TEXT NOT NULL INDEXED, data_json TEXT, created_at REAL)`. The `user_id` index enables fast PID dedup lookups without scanning all files.
 
 `SessionData` fields: `user_id`, `test_cases`, `current_page`, `results`, `url_params`, `ref_audio_played`, `target_audio_played`, `created_at` (epoch timestamp for expiration checks).
 
-**Session expiration:** `_get_session()` checks `created_at` against `session_max_age_seconds` (config, default 7200). Expired sessions are deleted from memory and disk. The cookie also carries `Max-Age` for browser-side enforcement.
+**Session expiration:** `_get_session()` checks `created_at` against `session_max_age_seconds` (config, default 7200). Expired sessions are deleted from memory and the DB. The cookie also carries `Max-Age` for browser-side enforcement.
 
-**Participant cap:** `reserve_slot()` / `mark_completed()` / `mark_abandoned()` provide an atomic in-memory counter (`completed_count + in_progress_count`) that replaces the old `glob("results/*.json")` check. Because the methods are synchronous (no `await`), asyncio's cooperative multitasking guarantees the check-and-increment is atomic — no TOCTOU race. Counters are initialized from disk on startup. `find_by_user()` supports PID deduplication by looking up active sessions by user ID.
+**Participant cap:** `reserve_slot()` / `mark_completed()` / `mark_abandoned()` provide an atomic in-memory counter (`completed_count + in_progress_count`) that replaces the old `glob("results/*.json")` check. Because the methods are synchronous (no `await`), asyncio's cooperative multitasking guarantees the check-and-increment is atomic — no TOCTOU race. Counters are initialized from disk on startup. `find_by_user()` supports PID deduplication by looking up active sessions by user ID (in-memory first, then indexed SQLite query as fallback).
 
 ### Server (`app/server.py`)
 `create_app(...)` is a factory that returns the configured FastAPI app. It holds the sampler, page module, attention checks, instruction pages, and config values in its closure — no global state.
@@ -74,6 +76,7 @@ Key internals:
 - `GET /audio/{file_path:path}` — serves audio files from configured `audio_roots` with `Cache-Control: public, max-age=86400` and `Accept-Ranges` headers. Resolves paths and guards against traversal (e.g. `../../../etc/passwd` → 404). Uses a single `is_file()` call per root (no separate `exists()` check).
 - `POST /api/restore` — called by browser JS to re-hydrate a session from disk after a server restart; sets the session cookie and returns a redirect URL.
 - **Audio controls**: all `<audio>` elements have `controlsList="noplaybackrate"` to disable playback speed adjustment. Download is still allowed.
+- **Shutdown**: `store.close()` is registered as a FastAPI shutdown handler to properly close the SQLite connection.
 
 ### Page system (`pages/`)
 Each language module (e.g. `pages/english.py`, `pages/finnish.py`) defines:
@@ -98,7 +101,7 @@ templates/
   login.html
   complete.html
   pages/
-    _test_base.html      # Shared macros (progress_bar, error_box, submit_row, prefetch_links)
+    _test_base.html      # Shared macros (progress_bar, error_box, submit_row, prefetch_links, shortcut_legend)
     cmos.html            # Two audio players + score radio
     smos.html            # Two audio players + score radio
     nmos.html            # Single audio player + score radio
@@ -111,15 +114,18 @@ templates/
 
 The `mdemphasis` Jinja2 filter (registered in `create_app`) converts `*word*` markdown emphasis in `empha_pref` transcripts to `<em>word</em>`, styled as bold-underline in CSS.
 
+The `shortcut_legend` macro renders a keyboard shortcuts legend (with numbered keycap badges for scores and modifier keys for audio playback). It adapts to dual-audio vs single-audio page types.
+
 Context keys passed to every test template: `page_num`, `total_pages`, `progress_pct`, `instructions_html`, `ref_audio_url`, `tar_audio_url`, `score_choices`, `second_score_choices` (EMOS only), `transcript` (empha_pref), `edited_transcript` (EMOS), `is_instruction`, `session_state_json`, `error`.
 
 ### Static files (`static/`)
-- `static/css/style.css` — clean semantic CSS, ~80ch centered container, responsive. No-reference pages (NMOS, QMOS, EMOS) use a unified `.rating-card` that wraps the audio player and score section with a `.rating-divider` between them.
-- `static/js/app.js` — handles four concerns:
+- `static/css/style.css` — clean semantic CSS, ~80ch centered container, responsive. No-reference pages (NMOS, QMOS, EMOS) use a unified `.rating-card` that wraps the audio player and score section with a `.rating-divider` between them. Includes 3D gradient `kbd.shortcut-key` styles and `.shortcut-legend` card styling.
+- `static/js/app.js` — handles five concerns:
   1. **Audio tracking**: listens for `ended` events on `#ref-audio` and `#tar-audio`, sets hidden form fields `ref_audio_played` / `target_audio_played` to `"true"`.
   2. **Client-side validation**: blocks form submit and shows an inline error if audio hasn't been played or no score is selected.
   3. **Browser cache / resume**: on test pages, saves `{session_id, current_page}` to `localStorage` after each render. On the login page, if `localStorage` has a session ID, POSTs to `/api/restore` to re-hydrate the session and redirects to `/test` — allowing users to resume after a network drop or browser restart. Clears localStorage on `/complete`.
   4. **Audio prefetch**: calls `new Audio().src = url` for the next two pages' audio files immediately after render.
+  5. **Keyboard shortcuts (capture phase)**: Number keys 1–9 select score radio buttons (first unselected group, or first group). `Ctrl+Shift+,` and `Ctrl+Shift+.` play the first and second audio respectively (with fallback for no-ref pages). Enter submits the form. Audio elements are auto-blurred on `play` to prevent the browser's shadow-DOM controls from intercepting keystrokes.
 
 ### Test list JSON format
 ```json

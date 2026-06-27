@@ -90,6 +90,17 @@ uv run main_fastapi.py --config-name YOUR_CONFIG_NAME
 | EMOS | Editing MOS (dual-score) | Two scores | Target only |
 | empha_pref | Emphasis preference | −1 / 0 / +1 | Reference + Target |
 
+## Keyboard shortcuts (during the test)
+
+| Shortcut | Action |
+|---|---|
+| `1`–`9` | Select score option by position |
+| `Ctrl`+`Shift`+`,` | Play first audio (Sample A, or the only sample on no-ref pages) |
+| `Ctrl`+`Shift`+`.` | Play second audio (Sample B, or the only sample on no-ref pages) |
+| `Enter` | Submit rating |
+
+Numbered keycap badges appear next to each score option and audio label, and a legend at the bottom of each test page shows all available shortcuts.
+
 ## Analyze results
 
 ```bash
