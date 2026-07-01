@@ -20,25 +20,28 @@
   <input type="hidden" id="ref-audio-played"    name="ref_audio_played"    value="false">
   <input type="hidden" id="target-audio-played" name="target_audio_played" value="false">
 
-  <div class="audio-row">
-    <div class="audio-player">
-      <span class="audio-label">Sample A <kbd class="shortcut-key">Ctrl</kbd> + <kbd class="shortcut-key">Shift</kbd> + <kbd class="shortcut-key">,</kbd></span>
-      <audio id="ref-audio" controls preload="auto" controlsList="noplaybackrate" src="{{ ref_audio_url }}"></audio>
+  <div class="two-col">
+    <div class="two-col-audio">
+      <div class="audio-player">
+        <span class="audio-label">Sample A <kbd class="shortcut-key">Ctrl</kbd> + <kbd class="shortcut-key">Shift</kbd> + <kbd class="shortcut-key">,</kbd></span>
+        <audio id="ref-audio" controls preload="auto" controlsList="noplaybackrate" src="{{ ref_audio_url }}"></audio>
+      </div>
+      <div class="audio-player">
+        <span class="audio-label">Sample B <kbd class="shortcut-key">Ctrl</kbd> + <kbd class="shortcut-key">Shift</kbd> + <kbd class="shortcut-key">.</kbd></span>
+        <audio id="tar-audio" controls preload="auto" controlsList="noplaybackrate" src="{{ tar_audio_url }}"></audio>
+      </div>
     </div>
-    <div class="audio-player">
-      <span class="audio-label">Sample B <kbd class="shortcut-key">Ctrl</kbd> + <kbd class="shortcut-key">Shift</kbd> + <kbd class="shortcut-key">.</kbd></span>
-      <audio id="tar-audio" controls preload="auto" controlsList="noplaybackrate" src="{{ tar_audio_url }}"></audio>
-    </div>
-  </div>
-
-  <div class="score-section">
-    <div class="score-options">
-      {% for choice in score_choices %}
-      <label class="score-option">
-        <input type="radio" name="score" value="{{ choice.value }}" required>
-        <span class="score-label"><kbd class="shortcut-key">{{ loop.index }}</kbd> {{ choice.label }}</span>
-      </label>
-      {% endfor %}
+    <div class="two-col-scores">
+      <div class="score-section">
+        <div class="score-options">
+          {% for choice in score_choices %}
+          <label class="score-option">
+            <input type="radio" name="score" value="{{ choice.value }}" required>
+            <span class="score-label"><kbd class="shortcut-key">{{ loop.index }}</kbd> {{ choice.label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
     </div>
   </div>
 
