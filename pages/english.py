@@ -204,17 +204,19 @@ class AttentionNoReferencePage(NoReferencePage):
 
     def get_instructions(self):
         return """
-        ### Attention Check
+        ### Speech Quality Evaluation (QMOS)
 
-        The given audio sample contains instructions on how to rate this question.
+        Please rate the quality of the audio sample.
+        - Scale: 1-5 (1: Bad, 2: Poor, 3: Fair, 4: Good, 5: Excellent)
+        - Please finish listening to the given audio sample before submitting your score.
+        - Trust your first impression, no need to overthink the answer.
 
-        Please rate as instructed in the sample.
-        - Scale: 1 to 5
+        Consider in your rating whether the audio sample has artefacts, such as background noise, reverberation, volume inconsistencies, or digital distortions.
         """
-    
+
     def get_slider_config(self):
         return 1, 5, 3  # min, max, default
-    
+
     def get_level_label(self):
         return ["Bad", "Poor", "Fair", "Good", "Excellent"]
 
@@ -336,13 +338,19 @@ class AttentionPage(CMOSPage):
 
     def get_instructions(self):
         return """
-        ### Attention Check
-        Please rate as the audio instructed.
-        - Scale: -3 to 3
+        ### Comparative Mean Opinion Score Test (CMOS)
+        Please compare how human-sounded of the sample B against the sample A.
+        - Scale: -3 to +3
+        - Negative: Sample A is more human-like
+        - Positive: Sample B is more human-like
+        - 0: Equal quality
 
-        **Please finishing listen to both audio before submit your answers.**
+        Tips:
+        - The audios are recorded under various conditions and are speak in different speaking style, so please focus on how the voice sound like a natural human voice.
+        - Please finish listening the given audio before submitting your score.
+        - It's very important to trust your first impression and not overthink your answer.
         """
-    
+
     def get_level_label(self):
         return [
             "Sample A is much better.", 

@@ -71,8 +71,8 @@ All form submissions use the POST-Redirect-GET pattern, so the browser back butt
 `create_app(...)` is a factory that returns the configured FastAPI app. It holds the sampler, page module, attention checks, instruction pages, and config values in its closure — no global state.
 
 Key internals:
-- `_sample_session()` — samples test cases, inserts instruction pages, and interleaves attention checks at evenly-spaced positions (same logic as the old `MOSTest.sample_test_cases_for_session`).
-- `_render_test()` — builds the full Jinja2 context for the current test page and calls `templates.TemplateResponse`.
+- `_sample_session()` — samples test cases, inserts instruction pages, and interleaves attention checks at evenly-spaced positions (same logic as the old `MOSTest.sample_test_cases_for_session`). Attention checks are **implicit**: each one is only inserted at a position whose immediate predecessor is a real question of a shape-compatible type (`_SAFE_PREDECESSOR_TYPES` — `attention`/dual-audio checks require a `CMOS`/`SMOS` predecessor, `no_reference_attention`/single-audio checks require a `QMOS`/`NMOS` predecessor), so a single-audio question is never followed by a dual-audio attention check or vice versa. A check is skipped (with a logged warning) if no eligible predecessor exists anywhere in the session — e.g. an `empha_pref`-only test list places zero attention checks, since `empha_pref`'s instructions reference a transcript panel that the attention templates don't render.
+- `_render_test()` — builds the full Jinja2 context for the current test page and calls `templates.TemplateResponse`. For attention-type pages, `instructions_html` is *not* built from the attention page's own `get_instructions()` — it's copied from the immediately preceding test case's page instead (guaranteed compatible by `_sample_session()`'s placement rule above), so the check is textually indistinguishable from a normal question. The score choices/slider still come from the attention page's own (unchanged) config — only the instructions text is borrowed.
 - `GET /audio/{file_path:path}` — serves audio files from configured `audio_roots` with `Cache-Control: public, max-age=86400` and `Accept-Ranges` headers. Resolves paths and guards against traversal (e.g. `../../../etc/passwd` → 404). Uses a single `is_file()` call per root (no separate `exists()` check).
 - `POST /api/restore` — called by browser JS to re-hydrate a session from disk after a server restart; sets the session cookie and returns a redirect URL.
 - **Audio controls**: all `<audio>` elements have `controlsList="noplaybackrate"` to disable playback speed adjustment. Download is still allowed.
@@ -86,7 +86,7 @@ Each language module (e.g. `pages/english.py`, `pages/finnish.py`) defines:
 - Each page implements `get_instructions()`, `get_slider_config()` (returns min, max, default), `get_level_label()`, and `get_template_name()`.
 - `is_instruction = True` on instruction-page subclasses; the template renders a "Practice question" banner when this is set.
 
-Finnish, Swedish, and Norwegian page modules import `TestPage` and `NoReferencePage` from `pages/english.py` and only override the text methods — `get_template_name()` is inherited.
+Finnish, Swedish, and Norwegian page modules import `TestPage` and `NoReferencePage` from `pages/english.py`; each concrete class still needs its own `get_template_name()` override (it's abstract on `TestPage`, not inherited from `pages/english.py`'s classes, since these modules subclass `TestPage` directly rather than the English concrete classes).
 
 **To add a new language:** copy an existing page module, translate the instruction strings, and set `language: your_language` in the config.
 
@@ -110,7 +110,7 @@ templates/
     empha_pref.html      # Two audio players + score radio + transcript
 ```
 
-`attention` and `no_reference_attention` types reuse `cmos.html` and `qmos.html` respectively (same HTML structure; the instructions text distinguishes them). Template selection is driven by `_TEMPLATE_MAP` in `app/server.py`.
+`attention` and `no_reference_attention` types reuse `cmos.html` and `qmos.html` respectively (same HTML structure; nothing in the template marks them as checks — see `_sample_session()`/`_render_test()` above for how they're made indistinguishable from a normal question). Template selection is driven by `_TEMPLATE_MAP` in `app/server.py`.
 
 The `mdemphasis` Jinja2 filter (registered in `create_app`) converts `*word*` markdown emphasis in `empha_pref` transcripts to `<em>word</em>`, styled as bold-underline in CSS.
 
@@ -154,13 +154,15 @@ Use `test_list_builders/` scripts to generate these from local files, Google Dri
 - `analysis_pref.py`: Filters by attention checks, then computes per-pair preference ratios for `empha_pref` tests. Normalizes scores by flipping sign when `swap=True`. Saves CSV and stacked bar plots.
 - `dnsmos_analysis.py`, `qmos_analysis.py`: Variant analyses for DNSMOS/QMOS test types.
 
-**Attention check audio naming convention:** The expected score is parsed from the audio filename — the last underscore-separated segment before the extension is used as the expected integer score (e.g., `attention_score_3.wav` → expected score 3). This drives automatic pass/fail filtering across all analysis scripts.
+**Attention check audio naming convention:** the expected answer is parsed from the audio filename, but the convention and which script enforces it differs by type:
+- `attention` (dual-audio, CMOS-shaped): the last underscore-separated segment before the extension is the expected **integer** score, e.g. `attention_check_-3.wav` → expected `-3`. Enforced by `analysis.py` and `analysis_pref.py` (both read `reference_audio`); `qmos_analysis.py` ignores this type entirely.
+- `no_reference_attention` (single-audio, QMOS-shaped): the last underscore-separated segment is the expected quality **word** (`bad`/`poor`/`fair`/`good`/`excellent`, mapped to 1-5), e.g. `attention_check_bad.wav` → expected `1`. Enforced only by `analysis/qmos_analysis.py` (reads `target_audio`); `analysis.py`/`analysis_pref.py` ignore this type entirely — a QMOS-only or QMOS-heavy study must use `qmos_analysis.py` to get attention-check filtering.
 
 ### Config structure (`config/`)
 `config/default.yaml` is always loaded by Hydra; named configs override it. Key fields:
 - `sampler.test_list_path`: path to the test list JSON
 - `sampler.sample_size_per_test`: how many items to sample per system per test type
-- `attention_checks`: list of test case dicts for attention checks
+- `attention_checks`: list of test case dicts for attention checks — `type: 'attention'` (dual-audio, needs `reference`+`target`) or `type: 'no_reference_attention'` (single-audio, `target` only); see the "Attention checks" section in `README.md` for setup details and the naming-convention note above for scoring
 - `instructions`: list of instruction page test case dicts
 - `language`: selects the `pages/<language>.py` module
 - `prolific_return_code`: Prolific completion code for redirect

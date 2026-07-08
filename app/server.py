@@ -102,6 +102,19 @@ _TEMPLATE_MAP: dict[str, str] = {
 
 _EMOS_TYPES = {"emos", "EMOS", "emos_instruction"}
 
+_ATTENTION_TYPES = {"attention", "no_reference_attention"}
+
+# Deliberately an allowlist, not "anything that isn't attention/instruction".
+# EMOS and empha_pref are excluded even though their audio-count nominally
+# matches "dual"/"single" shape, because their instructions reference a
+# transcript panel / second score slider that cmos.html and qmos.html don't
+# render — borrowing that text would be a bigger giveaway than the thing
+# implicit attention checks are trying to hide.
+_SAFE_PREDECESSOR_TYPES: dict[str, set[str]] = {
+    "attention": {"cmos", "CMOS", "smos", "SMOS"},                # dual-audio
+    "no_reference_attention": {"qmos", "QMOS", "nmos", "NMOS"},   # single-audio
+}
+
 
 def _sample_session(
     sampler: TestCasesSampler,
@@ -129,12 +142,44 @@ def _sample_session(
     for cases in questions.values():
         test_cases.extend(cases)
 
+    checks_by_shape: dict[str, list] = {}
+    for check in attention_checks:
+        checks_by_shape.setdefault(check["type"], []).append(check)
+
+    # Only hunt for predecessor types whose shape actually has checks
+    # configured — e.g. a CMOS-only config never wastes a slot looking for
+    # a QMOS/NMOS neighbor it has no "no_reference_attention" bank for.
+    eligible_predecessor_types: set[str] = set()
+    for shape, entries in checks_by_shape.items():
+        if entries and shape in _SAFE_PREDECESSOR_TYPES:
+            eligible_predecessor_types |= _SAFE_PREDECESSOR_TYPES[shape]
+
     n = min(num_attention, len(attention_checks)) if attention_checks else 0
-    if n > 0:
-        for i, check in enumerate(random.sample(attention_checks, n)):
-            lo = math.floor(0.2 * (i + 1) * len(test_cases))
-            hi = math.floor(0.2 * (i + 2) * len(test_cases))
-            test_cases.insert(random.randint(lo, hi), check)
+    for i in range(n):
+        total = len(test_cases)
+        lo = math.floor(0.2 * (i + 1) * total)
+        hi = math.floor(0.2 * (i + 2) * total)
+        if total > 0:
+            lo = max(lo, 1)   # never place a check at index 0 — it needs a predecessor
+            hi = max(hi, lo)  # keep the window non-empty after raising lo
+
+        # A valid insertion index is one whose immediate predecessor is a
+        # real, shape-compatible question — never another attention check
+        # (their type isn't in eligible_predecessor_types) and never an
+        # instruction page (*_instruction type strings don't match either).
+        candidates = [idx for idx in range(1, total + 1)
+                      if test_cases[idx - 1]["type"] in eligible_predecessor_types]
+        if not candidates:
+            print(f"Warning: no eligible predecessor found for attention check {i + 1}/{n} — skipping")
+            continue
+
+        in_window = [idx for idx in candidates if lo <= idx <= hi]
+        idx = random.choice(in_window if in_window else candidates)
+
+        predecessor_type = test_cases[idx - 1]["type"]
+        shape = "attention" if predecessor_type in _SAFE_PREDECESSOR_TYPES["attention"] else "no_reference_attention"
+        check = random.choice(checks_by_shape[shape])
+        test_cases.insert(idx, check)
 
     return test_cases
 
@@ -218,7 +263,12 @@ def create_app(
         test_type = tc["type"]
 
         template_name = _TEMPLATE_MAP.get(test_type, "pages/cmos.html")
-        instructions_html = _instructions_to_html(page_obj.get_instructions())
+        if test_type in _ATTENTION_TYPES and session.current_page > 0:
+            predecessor_tc = session.test_cases[session.current_page - 1]
+            predecessor_page = PageFactory.create_page(predecessor_tc)
+            instructions_html = _instructions_to_html(predecessor_page.get_instructions())
+        else:
+            instructions_html = _instructions_to_html(page_obj.get_instructions())
         ref_url = _audio_url(tc.get("reference"))
         tar_url = _audio_url(tc["target"])
         score_choices = _build_score_choices(page_obj)

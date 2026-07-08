@@ -90,6 +90,33 @@ uv run main_fastapi.py --config-name YOUR_CONFIG_NAME
 | EMOS | Editing MOS (dual-score) | Two scores | Target only |
 | empha_pref | Emphasis preference | −1 / 0 / +1 | Reference + Target |
 
+## Attention checks
+
+Attention checks are **implicit** — participants can't tell a question is a check. Each one reuses the exact instructions text of whatever real question immediately precedes it in the session; only the audio differs, and its own score options stay fixed regardless of what precedes it.
+
+There are two shapes, matching the two audio layouts above:
+
+| `type` | Shape | Audio field(s) | Score options | Expected-answer filename convention |
+|---|---|---|---|---|
+| `attention` | Dual-audio (Reference + Target) | `reference`, `target` | Fixed −3 to +3 (same 7 options as CMOS) | Last `_`-segment is the expected **integer**, e.g. `attention_check_-3.wav` |
+| `no_reference_attention` | Single-audio (Target only) | `target` only | Fixed 1 to 5, "Bad"/"Poor"/"Fair"/"Good"/"Excellent" | Last `_`-segment is the expected **word**, e.g. `attention_check_bad.wav` |
+
+Add entries to `attention_checks:` in your config, e.g. to set up single-audio (QMOS/NMOS-shaped) checks:
+
+```yaml
+attention_checks:
+  - type: 'no_reference_attention'
+    target: 'audios/no_ref_attention_check_english/attention_check_bad.wav'
+  - type: 'no_reference_attention'
+    target: 'audios/no_ref_attention_check_english/attention_check_excellent.wav'
+
+num_attention: 5  # how many to sample per session, across all attention_checks types combined
+```
+
+**Placement is shape-matched, not random**: a `no_reference_attention` check is only ever inserted directly after a real `QMOS` or `NMOS` question (never after CMOS/SMOS/EMOS/empha_pref), and an `attention` check is only ever inserted after a real `CMOS` or `SMOS` question. If a session's sampled test cases don't include the matching question type, that attention check is silently skipped for the session rather than placed somewhere mismatched — so make sure your test list actually samples the question type you want checks attached to.
+
+**Scoring**: `analysis.py`/`analysis_pref.py` only filter participants on `attention` (dual-audio) failures; `analysis/qmos_analysis.py` only filters on `no_reference_attention` (single-audio) failures. Pick the analysis script that matches the attention-check type(s) your study actually uses.
+
 ## Keyboard shortcuts (during the test)
 
 | Shortcut | Action |

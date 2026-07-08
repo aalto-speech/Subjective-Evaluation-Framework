@@ -4,7 +4,10 @@ from pages.english import TestPage, NoReferencePage
 
 class SMOSPage(TestPage):
     """SMOS (Speaker Similarity) test page"""
-    
+
+    def get_template_name(self):
+        return "pages/smos.html"
+
     def get_instructions(self):
         return """
         ### Instruktioner för test av talarlikhet
@@ -73,7 +76,10 @@ class SMOSInstructionPage(SMOSPage):
 
 class CMOSPage(TestPage):
     """CMOS (Comparative Mean Opinion Score) test page"""
-    
+
+    def get_template_name(self):
+        return "pages/cmos.html"
+
     def get_instructions(self):
         return """
         ### Instruktioner för test av människolikhet
@@ -152,11 +158,14 @@ class AttentionPage(CMOSPage):
     
     def get_instructions(self):
         return """
-        ### Uppmärksamhettest
+        ### Instruktioner för test av människolikhet
 
-        Båda ljden är identiska här, och innehåller en instruktion om hur du ska svara på frågan.
+        Du kommer att bli ombedd att lyssna på två ljudexempel: Ljud A och Ljud B.
 
-        Följ instruktionen när du väljer vad du ska kryssa i.
+        Din uppgift är att jämföra de två ljudexemplen och avgöra vilket som låter mest som en mänsklig röst. Du ska inte avgöra om rösten verkligen kommer från en människa, utan bara vilken som låter mest människolik.
+
+        Ljudexemplen kan skilja i hur de spelades in, hur de pproducerades, och i talstil. Fokusera på rösten i sig, inte på bakgrundsljud, inspelningskvalitet, eller innehåll.
+
 
         Använd denna 7-gradiga skala för din bedömning:
 
@@ -168,7 +177,9 @@ class AttentionPage(CMOSPage):
         - 2 - Audio B är mer människolik
         - 3 - Audio B är mycket mer människolik
 
-        Trots att filerna är identiska ska du **lyssna igenom båda filerna helt**
+        Lyssna genom båda ljudexemplen helt och hållet innan du ger ditt omdöme.
+        Det är viktigt att du litar på ditt första intryck och inte övertänker ditt beslut.
+        Använd bara "lika" undantagsvis, då du verkligen inte lutar åt något håll alls.
         """
 
 

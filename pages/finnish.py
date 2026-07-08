@@ -4,7 +4,10 @@ from pages.english import TestPage, NoReferencePage
 
 class SMOSPage(TestPage):
     """SMOS (Speaker Similarity) test page"""
-    
+
+    def get_template_name(self):
+        return "pages/smos.html"
+
     def get_instructions(self):
         return """
         ### Puhujan samankaltaisuuden arviointi (similarity)
@@ -69,7 +72,10 @@ class SMOSInstructionPage(SMOSPage):
 
 class CMOSPage(TestPage):
     """CMOS (Comparative Mean Opinion Score) test page"""
-    
+
+    def get_template_name(self):
+        return "pages/cmos.html"
+
     def get_instructions(self):
         return """
         ### Puheen ihmismäisyyden arviointi (human-likeness)
@@ -139,9 +145,13 @@ class AttentionPage(CMOSPage):
     
     def get_instructions(self):
         return """
-        ### Huomiotarkistus
+        ### Puheen ihmismäisyyden arviointi (human-likeness)
 
-        Molemmat äänitteet ovat identtisiä ja ne sisältävät ohjeita tämän kysymyksen arvioimiseksi.
+        Sinua pyydetään kuuntelemaan kahta ääninäytettä: Ääni A ja Ääni B.
+
+        Tehtäväsi on verrata kahta ääninäytettä ja arvioida, kumpi näytteistä kuulostaa enemmän ihmisääneltä. Tehtäväsi ei ole tunnistaa, onko ääni ihmisen tuottama vai keinotekoinen, vaan arvioida, kuinka ihmisen kaltaisilta näytteet kuulostavat.
+
+        Ääninäytteet on voitu tallentaa eri olosuhteissa tai tuottaa eri tekniikoilla, ja ne voivat sisältää erilaisia puhetyylejä. Keskity puheäänen ominaisuuksiin, äläkä kiinnitä huomiota taustameluun, tallennuslaatuun tai sisältöön.
 
         Käytä seuraavaa 7-portaista asteikkoa arvioinnissasi:
         - -3 - Ääni A kuulostaa paljon enemmän ihmisen kaltaiselta
@@ -152,12 +162,15 @@ class AttentionPage(CMOSPage):
         - 2 - Ääni B kuulostaa enemmän ihmisen kaltaiselta
         - 3 - Ääni B kuulostaa paljon enemmän ihmisen kaltaiselta
 
-        Vaikka äänitteet ovat identtiset, **kuuntele molemmat äänitteet loppuun ennen vastaustesi lähettämistä.**
+        Kuuntele molemmat ääninäytteet kokonaan ennen arviosi antamista. Luota ensivaikutelmaasi äläkä mieti päätöstäsi liikaa. Käytä "0" -vaihtoehtoa vain satunnaisesti, jos et todella löydä eroa kahden näytteen välillä.
         """
 
 class QMOSPage(NoReferencePage):
     """QMOS (quality) test page"""
-    
+
+    def get_template_name(self):
+        return "pages/qmos.html"
+
     def get_instructions(self):
         return """
         ### Puheen laadun arviointi (QMOS)
@@ -211,16 +224,22 @@ class QMOSNegativeInstructionPage(QMOSPage):
 
 class AttentionNoReferencePage(NoReferencePage):
     """Abstract base class for attention check pages without reference audio"""
+
+    def get_template_name(self):
+        return "pages/qmos.html"
+
     def get_instructions(self):
         return """
-        ### Huomiotarkistus
-        Annettu näyte sisältää ohjeet siitä, miten tämä kysymys tulee arvioida.
+        ### Puheen laadun arviointi (QMOS)
 
-        Arvioi puhenäytteen sisältämän ohjeen mukaisesti.
+        Arvioi ääninäytteen laatua.
+        - Asteikko: 1-5 (1: Huono, 2: Heikko, 3: Kohtalainen, 4: Hyvä, 5: Erinomainen)
+        - Kuuntele annettu näyte loppuun ennen arvion lähettämistä.
+        - Luota ensivaikutelmaan äläkä mieti vastausta liikaa.
 
-        - Asteikko: 1 - Huono, 2 - Heikko, 3 - Kohtalainen, 4 - Hyvä, 5 - Erinomainen
+        Ota arvioinnissasi huomioon mahdolliset häiriöt äänessä, kuten taustamelu, kaiku, vaihteleva äänenvoimakkuus tai digitaaliset vääristymät.
         """
-    
+
     def get_slider_config(self):
         return 1, 5, 3  # min, max, default
     
