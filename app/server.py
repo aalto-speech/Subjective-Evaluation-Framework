@@ -210,7 +210,8 @@ def create_app(
         if session is None:
             return RedirectResponse(url="/", status_code=303)
         if session.current_page >= len(session.test_cases):
-            return RedirectResponse(url="/complete", status_code=303)
+            prolific_flag = "1" if "@" not in session.user_id else "0"
+            return RedirectResponse(url=f"/complete?prolific={prolific_flag}", status_code=303)
 
         tc = session.test_cases[session.current_page]
         page_obj = PageFactory.create_page(tc)
@@ -294,7 +295,7 @@ def create_app(
 
             # 2. Already completed? Block re-taking.
             if (RESULTS_DIR / f"{prolific_pid}_results.json").exists():
-                return RedirectResponse(url="/complete", status_code=303)
+                return RedirectResponse(url="/complete?prolific=1", status_code=303)
 
             # 3. Active session exists for this PID (lost cookie / different device)?
             #    Restore it and re-attach the cookie.
@@ -335,7 +336,8 @@ def create_app(
 
         # Already completed? Block re-taking.
         if (RESULTS_DIR / f"{valid_id}_results.json").exists():
-            return RedirectResponse(url="/complete", status_code=303)
+            prolific_flag = "1" if "@" not in valid_id else "0"
+            return RedirectResponse(url=f"/complete?prolific={prolific_flag}", status_code=303)
 
         # Active session exists for this ID (different tab / lost cookie)?
         # Restore it instead of creating a duplicate.
@@ -382,7 +384,8 @@ def create_app(
         if session is None:
             return RedirectResponse(url="/", status_code=303)
         if session.current_page >= len(session.test_cases):
-            return RedirectResponse(url="/complete", status_code=303)
+            prolific_flag = "1" if "@" not in session.user_id else "0"
+            return RedirectResponse(url=f"/complete?prolific={prolific_flag}", status_code=303)
 
         tc = session.test_cases[session.current_page]
         test_type = tc["type"]
@@ -451,7 +454,8 @@ def create_app(
             await asyncio.to_thread(_write_results)
             store.mark_completed()
             await store.delete(mos_session_id)
-            return RedirectResponse(url="/complete", status_code=303)
+            prolific_flag = "1" if "@" not in _user_id else "0"
+            return RedirectResponse(url=f"/complete?prolific={prolific_flag}", status_code=303)
 
         return RedirectResponse(url="/test", status_code=303)
 
@@ -465,9 +469,11 @@ def create_app(
         mos_session_id: Optional[str] = Cookie(default=None),
     ):
         session = await _get_session(mos_session_id)
-        is_prolific = bool(session and "@" not in session.user_id)
         if session is not None:
+            is_prolific = "@" not in session.user_id
             store.mark_abandoned()
+        else:
+            is_prolific = request.query_params.get("prolific") == "1"
         if mos_session_id:
             await store.delete(mos_session_id)
         resp = templates.TemplateResponse("complete.html", {
@@ -498,7 +504,8 @@ def create_app(
             return Response(status_code=404)
 
         if session.current_page >= len(session.test_cases):
-            return JSONResponse({"ok": True, "redirect": "/complete"})
+            prolific_flag = "1" if "@" not in session.user_id else "0"
+            return JSONResponse({"ok": True, "redirect": f"/complete?prolific={prolific_flag}"})
 
         resp = JSONResponse({"ok": True, "redirect": "/test"})
         resp.set_cookie("mos_session_id", sid, httponly=True, samesite="lax", max_age=session_max_age_seconds)

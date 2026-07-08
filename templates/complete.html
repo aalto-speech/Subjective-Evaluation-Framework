@@ -7,7 +7,13 @@
   <p>Thank you for participating. Your responses have been recorded.</p>
 
   {% if is_prolific %}
-  <a href="{{ redirect_url }}" class="prolific-btn">Return to Prolific</a>
+  <p>Redirecting you back to Prolific…</p>
+  <a href="{{ redirect_url }}" id="prolific-return-btn" class="prolific-btn">Return to Prolific</a>
+  <script>
+    setTimeout(function () {
+      window.location.replace(document.getElementById('prolific-return-btn').href);
+    }, 1500);
+  </script>
   {% else %}
   <p>You may now close this tab.</p>
   {% endif %}
