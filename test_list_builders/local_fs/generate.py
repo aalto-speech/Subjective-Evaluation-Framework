@@ -17,6 +17,7 @@ class TTSLocalTestGenerator:
     def __init__(self):
         """Initialize the local filesystem test generator"""
         self.audio_extensions = {'.wav', '.mp3', '.m4a', '.flac', '.ogg', '.aac'}
+        self.qmos_cache = set()
     
     def _get_audio_files(self, folder_path: Path, system_name: str, root_path: Path, relative_root: str) -> List[Dict[str, str]]:
         """Get all audio files from a local folder and include system and path information"""
@@ -272,10 +273,14 @@ class TTSLocalTestGenerator:
             
             # Generate pairs for this specific evaluation
             pairs_for_this_evaluation = []
+
+            if not self.qmos_cache:
+                max_possible_pairs = min(len(target_files), num_pairs)
+                selected_files = random.sample(target_files, max_possible_pairs)
+                self.qmos_cache = set([os.path.basename(f['complete_path']) for f in selected_files])
+            if self.qmos_cache:
+                selected_files = [f for f in target_files if os.path.basename(f['complete_path']) in self.qmos_cache]
             
-            # Sample random files for MOS evaluation
-            max_possible_pairs = min(len(target_files), num_pairs)
-            selected_files = random.sample(target_files, max_possible_pairs)
             
             for target_file in selected_files:
                 pairs_for_this_evaluation.append({
