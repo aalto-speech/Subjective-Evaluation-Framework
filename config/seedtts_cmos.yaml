@@ -1,7 +1,7 @@
 sampler:
   test_list_path: test_lists/seedtts_CMOS.json
   sample_size_per_test: 15
-gradio:
+server:
   server_name: 127.0.0.1
   server_port: 52705
   root_path: ""
