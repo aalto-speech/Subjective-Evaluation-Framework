@@ -8,7 +8,7 @@ server:
   allowed_paths:
     - cwd
 
-num_attention: 3
+num_attention: 5
 
 # Need to be fixed
 attention_checks:
