@@ -144,17 +144,18 @@ def _sample_session(
     checks_by_shape: dict[str, list] = {}
     for check in attention_checks:
         checks_by_shape.setdefault(check["type"], []).append(check)
-
-    # Only hunt for predecessor types whose shape actually has checks
-    # configured — e.g. a CMOS-only config never wastes a slot looking for
-    # a QMOS/NMOS neighbor it has no "no_reference_attention" bank for.
-    eligible_predecessor_types: set[str] = set()
-    for shape, entries in checks_by_shape.items():
-        if entries and shape in _SAFE_PREDECESSOR_TYPES:
-            eligible_predecessor_types |= _SAFE_PREDECESSOR_TYPES[shape]
+    for checks in checks_by_shape.values():
+        random.shuffle(checks)
 
     n = min(num_attention, len(attention_checks)) if attention_checks else 0
     for i in range(n):
+        # Only consider predecessor types whose shape still has an unused
+        # check. Each selected check is removed from its shuffled pool.
+        eligible_predecessor_types: set[str] = set()
+        for shape, checks in checks_by_shape.items():
+            if checks and shape in _SAFE_PREDECESSOR_TYPES:
+                eligible_predecessor_types |= _SAFE_PREDECESSOR_TYPES[shape]
+
         total = len(test_cases)
         lo = math.floor(0.2 * (i + 1) * total)
         hi = math.floor(0.2 * (i + 2) * total)
@@ -166,8 +167,13 @@ def _sample_session(
         # real, shape-compatible question — never another attention check
         # (their type isn't in eligible_predecessor_types) and never an
         # instruction page (*_instruction type strings don't match either).
-        candidates = [idx for idx in range(1, total + 1)
-                      if test_cases[idx - 1]["type"] in eligible_predecessor_types]
+        # The following item cannot be a check either, which keeps separately
+        # inserted checks from becoming adjacent.
+        candidates = [
+            idx for idx in range(1, total + 1)
+            if test_cases[idx - 1]["type"] in eligible_predecessor_types
+            and (idx == total or test_cases[idx]["type"] not in _ATTENTION_TYPES)
+        ]
         if not candidates:
             print(f"Warning: no eligible predecessor found for attention check {i + 1}/{n} — skipping")
             continue
@@ -177,7 +183,7 @@ def _sample_session(
 
         predecessor_type = test_cases[idx - 1]["type"]
         shape = "attention" if predecessor_type in _SAFE_PREDECESSOR_TYPES["attention"] else "no_reference_attention"
-        check = random.choice(checks_by_shape[shape])
+        check = checks_by_shape[shape].pop()
         test_cases.insert(idx, check)
 
     return test_cases
