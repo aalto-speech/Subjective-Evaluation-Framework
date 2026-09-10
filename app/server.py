@@ -105,13 +105,12 @@ _EMOS_TYPES = {"emos", "EMOS", "emos_instruction"}
 _ATTENTION_TYPES = {"attention", "no_reference_attention"}
 
 # Deliberately an allowlist, not "anything that isn't attention/instruction".
-# EMOS and empha_pref are excluded even though their audio-count nominally
-# matches "dual"/"single" shape, because their instructions reference a
-# transcript panel / second score slider that cmos.html and qmos.html don't
-# render — borrowing that text would be a bigger giveaway than the thing
-# implicit attention checks are trying to hide.
+# EMOS is excluded even though its audio count nominally matches the dual-audio
+# shape because its instructions reference a second score slider that cmos.html
+# does not render. Emphasis-preference questions may precede a dual-audio check;
+# the check itself still uses the CMOS template and score choices.
 _SAFE_PREDECESSOR_TYPES: dict[str, set[str]] = {
-    "attention": {"cmos", "CMOS", "smos", "SMOS"},                # dual-audio
+    "attention": {"cmos", "CMOS", "smos", "SMOS", "empha_pref"},  # dual-audio
     "no_reference_attention": {"qmos", "QMOS", "nmos", "NMOS"},   # single-audio
 }
 
