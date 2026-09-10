@@ -137,6 +137,10 @@ uv run analysis/analysis.py RESULTS_DIRECTORY
 # Preference test analysis
 uv run analysis/analysis_pref.py RESULTS_DIRECTORY
 
+# Equal-WER preference analysis with strict attention-check filtering
+uv run analysis/analysis_pref.py results/preference \
+  --wer_directory results/wer
+
 # QMOS analysis
 uv run analysis/qmos_analysis.py -d RESULTS_DIRECTORY
 

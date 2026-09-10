@@ -1,3 +1,4 @@
+import argparse
 import json
 import sys
 import numpy as np
@@ -10,9 +11,23 @@ import os
 import glob
 
 
-def check_file_attention_checks(results):
-    """Check if all attention checks in a single file are correct"""
+WER_FILE_ALIASES = {
+    'GroundTruth': 'groundtruth_wer_results.jsonl',
+    'CosyVoice3-RL': 'CosyVoice3_wer_results.jsonl',
+    'FishAudio-S2': 'FishAudio-S2_wer_results.jsonl',
+    'Qwen3-TTS-VoiceDesign': 'Qwen3-TTS-VD_wer_results.jsonl',
+    'VoxCPM2': 'voxcpm2_wer_results.jsonl',
+    'F5TTS': 'F5TTS_wer_results.jsonl',
+    'F5TTS-DP-SFT': 'F5TTS-DP-SFT_wer_results.jsonl',
+    'F5TTS-speed0.9': 'F5TTS-speed0.9_wer_results.jsonl',
+    'F5TTS-DP-GRPO': 'F5TTS-DP-GRPO_wer_results.jsonl',
+}
+
+
+def count_failed_attention_checks(results):
+    """Count incorrect attention checks in a single result file."""
     attention_tests = [r for r in results if r['test_type'] == 'attention']
+    failures = 0
 
     for test in attention_tests:
         audio_path = test['reference_audio']
@@ -20,13 +35,132 @@ def check_file_attention_checks(results):
         actual_score = test['score']
 
         if expected_score != actual_score:
-            return False
+            failures += 1
 
-    return True
+    return failures
+
+
+def check_file_attention_checks(results):
+    """Return whether all attention checks are correct."""
+    return count_failed_attention_checks(results) == 0
+
+
+def _normalized_name(value):
+    """Normalize a system/file name for fallback WER-file matching."""
+    return ''.join(character.lower() for character in value if character.isalnum())
+
+
+def _resolve_wer_file(wer_directory, system):
+    """Resolve the JSONL file containing WERs for a system."""
+    alias = WER_FILE_ALIASES.get(system)
+    if alias:
+        alias_path = os.path.join(wer_directory, alias)
+        if os.path.isfile(alias_path):
+            return alias_path
+
+    expected_name = _normalized_name(system)
+    matches = []
+    for path in glob.glob(os.path.join(wer_directory, '*_wer_results.jsonl')):
+        stem = os.path.basename(path).removesuffix('_wer_results.jsonl')
+        if _normalized_name(stem) == expected_name:
+            matches.append(path)
+
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(f"Multiple WER files match system '{system}': {matches}")
+    raise FileNotFoundError(
+        f"No WER file found for system '{system}' in directory: {wer_directory}"
+    )
+
+
+def load_wer_results(wer_directory, systems):
+    """Load per-utterance WER values for the requested systems."""
+    if not os.path.isdir(wer_directory):
+        raise NotADirectoryError(f"WER directory does not exist: {wer_directory}")
+
+    wer_results = {}
+    for system in sorted(systems):
+        file_path = _resolve_wer_file(wer_directory, system)
+        system_wers = {}
+        with open(file_path, 'r') as f:
+            for line_number, line in enumerate(f, start=1):
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                utterance_id = os.path.splitext(os.path.basename(row['wav']))[0]
+                if utterance_id in system_wers:
+                    raise ValueError(
+                        f"Duplicate WER for '{utterance_id}' in {file_path}:{line_number}"
+                    )
+                system_wers[utterance_id] = float(row['wer'])
+        wer_results[system] = system_wers
+
+    return wer_results
+
+
+def filter_equal_wer_results(results, wer_directory):
+    """Keep preference judgments whose canonical system samples have equal WER."""
+    systems = {
+        system
+        for result in results
+        for system in (result.get('ref_system'), result.get('target_system'))
+        if system
+    }
+    wer_results = load_wer_results(wer_directory, systems)
+    pair_counts = defaultdict(lambda: {'total': 0, 'matched': 0})
+    matched_results = []
+
+    for result in results:
+        ref_system = result.get('ref_system')
+        target_system = result.get('target_system')
+        if not ref_system or not target_system:
+            continue
+
+        pair_key = (ref_system, target_system)
+        pair_counts[pair_key]['total'] += 1
+
+        if result['swap']:
+            canonical_ref_audio = result['target_audio']
+            canonical_target_audio = result['reference_audio']
+        else:
+            canonical_ref_audio = result['reference_audio']
+            canonical_target_audio = result['target_audio']
+
+        ref_utterance = os.path.splitext(os.path.basename(canonical_ref_audio))[0]
+        target_utterance = os.path.splitext(os.path.basename(canonical_target_audio))[0]
+        if ref_utterance != target_utterance:
+            raise ValueError(
+                f"Preference pair uses different utterance IDs: "
+                f"'{ref_utterance}' and '{target_utterance}'"
+            )
+
+        try:
+            ref_wer = wer_results[ref_system][ref_utterance]
+            target_wer = wer_results[target_system][target_utterance]
+        except KeyError as exc:
+            raise KeyError(
+                f"Missing WER for utterance '{ref_utterance}' in the WER inputs"
+            ) from exc
+
+        if ref_wer == target_wer:
+            matched_results.append(result)
+            pair_counts[pair_key]['matched'] += 1
+
+    print("\nEqual-WER filtering summary:")
+    print(f"WER directory: {wer_directory}")
+    print(f"Matched results: {len(matched_results)} / {len(results)}")
+    for (ref_system, target_system), counts in sorted(pair_counts.items()):
+        print(
+            f"  {ref_system} vs {target_system}: "
+            f"{counts['matched']} / {counts['total']}"
+        )
+
+    return matched_results
 
 
 def load_and_filter_json_files(directory_path):
-    """Load JSON files, filter out those that fail attention checks"""
+    """Load JSON files and exclude files with any failed attention check."""
     json_files = glob.glob(os.path.join(directory_path, "*.json"))
 
     if not json_files:
@@ -45,7 +179,8 @@ def load_and_filter_json_files(directory_path):
             results = data.get('results', [])
             total_files += 1
 
-            if check_file_attention_checks(results):
+            failure_count = count_failed_attention_checks(results)
+            if failure_count == 0:
                 participant_id = data.get('user_id', os.path.basename(file_path))
                 for result in results:
                     if result['test_type'] == 'empha_pref':
@@ -54,7 +189,10 @@ def load_and_filter_json_files(directory_path):
                         valid_results.append(result)
             else:
                 failed_files += 1
-                print(f"Excluded: {os.path.basename(file_path)} (failed attention checks)")
+                print(
+                    f"Excluded: {os.path.basename(file_path)} "
+                    f"({failure_count} failed attention checks)"
+                )
 
         except Exception as e:
             print(f"Error loading {file_path}: {e}")
@@ -377,9 +515,14 @@ def winning_utterances(results, ref_system, target_system, output_file=None):
     return winners
 
 
-def main(directory_path):
+def main(directory_path, wer_directory=None):
     """Main analysis function"""
     valid_results = load_and_filter_json_files(directory_path)
+
+    output_suffix = ''
+    if wer_directory is not None:
+        valid_results = filter_equal_wer_results(valid_results, wer_directory)
+        output_suffix = '_equal_wer'
 
     test_counts = defaultdict(int)
     for result in valid_results:
@@ -391,8 +534,14 @@ def main(directory_path):
 
     pref_results = analyze_preference(valid_results)
     print_preference_results(pref_results)
-    save_preference_to_csv(pref_results, output_file=f"{directory_path}/preference_results.csv")
-    plot_preference_results(pref_results, output_file=f"{directory_path}/preference_plot.pdf")
+    save_preference_to_csv(
+        pref_results,
+        output_file=f"{directory_path}/preference_results{output_suffix}.csv",
+    )
+    plot_preference_results(
+        pref_results,
+        output_file=f"{directory_path}/preference_plot{output_suffix}.pdf",
+    )
 
     # winning_utterances(
     #     valid_results,
@@ -405,9 +554,29 @@ def main(directory_path):
 
 
 if __name__ == "__main__":
-    directory_path = sys.argv[1]
+    parser = argparse.ArgumentParser(
+        description='Analyze emphasis-preference test results.',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        'directory_path',
+        help='Directory containing preference-result JSON files',
+    )
+    parser.add_argument(
+        '--wer_directory', '--wer-directory',
+        dest='wer_directory',
+        help=(
+            'Directory containing *_wer_results.jsonl files. When supplied, '
+            'only judgments whose two samples have exactly equal WER are analyzed.'
+        ),
+    )
+    args = parser.parse_args()
 
     try:
-        pref_results = main(directory_path)
+        pref_results = main(
+            args.directory_path,
+            wer_directory=args.wer_directory,
+        )
     except Exception as e:
         print(f"Error: {e}")
+        sys.exit(1)
