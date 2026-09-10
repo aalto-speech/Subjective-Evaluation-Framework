@@ -1,6 +1,6 @@
 sampler:
   test_list_path: test_lists/emphasis_preference.json
-  sample_size_per_test: 7
+  sample_size_per_test: 12
 server:
   server_name: 127.0.0.1
   server_port: 52705

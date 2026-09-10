@@ -289,12 +289,11 @@ class EmphasisPreferencePage(TestPage):
     def get_instructions(self):
         return """
         ### Emphasis Preference Test
-        Given the text, with the emphasized word wrapped in asterisk (*), please listen to sample A and B, and choose your preference over these two samples.
+        Given the text, with the emphasized word shown in **bold and underlined**, please listen to sample A and B, and choose your preference over these two samples.
 
-        Use the following criteria to choose your preference:
-        1. The localization of the emphasis is accurate.
-        2. The sample matches the transcript.
-        3. You like the way how the words are emphasized.
+        Please focus on the following perspectives when choosing your preference:
+        1. The localization of the emphasis is accurate (e.g., the bold words are emphasized correctly and non-bold words are not emphasized).
+        2. You like the way how the words are emphasized.
         
         Tips:
         - Two samples might belong to different speakers with different recording conditions and different speaking style.
@@ -318,14 +317,13 @@ class EmphasisPreferenceInstructionPage(EmphasisPreferencePage):
     def get_instructions(self):
         return """
         ### Emphasis Preference Test - Instruction
-        Given the text, with the emphasized word wrapped in asterisk (*), please listen to sample A and B, and choose your preference over these two samples, in terms of the way they emphasize the selected word(s).
+        Given the text, with the emphasized word shown in **bold and underlined**, please listen to sample A and B, and choose your preference over these two samples, in terms of the way they emphasize the selected word(s).
 
         **This is an instruction question, and it will not count towards the final results.**
 
-        Use the following criteria to choose your preference:
-        1. The localization of the emphasis is accurate.
-        2. The sample matches the transcript.
-        3. You like the way how the words are emphasized.
+        Please focus on the following perspectives when choosing your preference:
+        1. The localization of the emphasis is accurate (e.g., the bold words are emphasized correctly and non-bold words are not emphasized).
+        2. You like the way how the words are emphasized.
         
         Tips:
         - Two samples might belong to different speakers with different recording conditions and different speaking style.
