@@ -141,6 +141,11 @@ uv run analysis/analysis_pref.py RESULTS_DIRECTORY
 uv run analysis/analysis_pref.py results/preference \
   --wer_directory results/wer
 
+# Equal-WER analysis with ties excluded from the significance test
+uv run analysis/analysis_pref.py results/preference \
+  --wer_directory results/wer \
+  --tie_handling drop
+
 # QMOS analysis
 uv run analysis/qmos_analysis.py -d RESULTS_DIRECTORY
 

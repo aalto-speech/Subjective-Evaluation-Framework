@@ -210,14 +210,20 @@ def load_and_filter_json_files(directory_path):
     return valid_results
 
 
-def analyze_preference(results):
+def analyze_preference(results, tie_handling='split'):
     """Analyze preference results per system pair.
 
     score semantics (after swap normalization):
       -1 = ref_system (A) preferred
        0 = no preference
        1 = target_system (B) preferred
+
+    tie_handling controls the significance test only. Descriptive counts and
+    ratios always retain ties.
     """
+    if tie_handling not in {'split', 'drop'}:
+        raise ValueError("tie_handling must be either 'split' or 'drop'")
+
     pair_counts = defaultdict(lambda: {'a_pref': 0, 'no_pref': 0, 'b_pref': 0,
                                        'ref_system': None, 'target_system': None,
                                        'scores': []})
@@ -267,6 +273,26 @@ def analyze_preference(results):
             p_split_ties = 1.0
             p_split_ties_a_gt_b = 1.0
 
+        # Drop-ties exact binomial: condition on decisive A/B judgments only.
+        decisive_total = a_votes + b_votes
+        if decisive_total > 0:
+            p_drop_ties = stats.binomtest(
+                b_votes, decisive_total, p=0.5, alternative='greater'
+            ).pvalue
+            p_drop_ties_a_gt_b = stats.binomtest(
+                a_votes, decisive_total, p=0.5, alternative='greater'
+            ).pvalue
+        else:
+            p_drop_ties = 1.0
+            p_drop_ties_a_gt_b = 1.0
+
+        if tie_handling == 'split':
+            p_b_gt_a = p_split_ties
+            p_a_gt_b = p_split_ties_a_gt_b
+        else:
+            p_b_gt_a = p_drop_ties
+            p_a_gt_b = p_drop_ties_a_gt_b
+
         # Bootstrap 95% CI on the win-rate (ties excluded).
         # Each resample recomputes win-rate = b_pref / (a_pref + b_pref).
         decisive_scores = scores_arr[scores_arr != 0]
@@ -287,8 +313,13 @@ def analyze_preference(results):
             'no_pref_ratio': counts['no_pref'] / total if total > 0 else None,
             'b_pref_ratio': counts['b_pref'] / total if total > 0 else None,
             'n_samples': total,
+            'tie_handling': tie_handling,
+            'p_b_gt_a': p_b_gt_a,
+            'p_a_gt_b': p_a_gt_b,
             'p_split_ties': p_split_ties,
             'p_split_ties_a_gt_b': p_split_ties_a_gt_b,
+            'p_drop_ties': p_drop_ties,
+            'p_drop_ties_a_gt_b': p_drop_ties_a_gt_b,
             'ci_low': ci_low,
             'ci_high': ci_high,
         }
@@ -309,10 +340,15 @@ def _p_cell(p):
 
 def print_preference_results(pref_results):
     """Print formatted preference results"""
+    tie_handling = next(
+        (data['tie_handling'] for data in pref_results.values()),
+        'split',
+    )
+    test_label = 'SplitTie' if tie_handling == 'split' else 'DropTie'
     print("\nPREFERENCE RESULTS")
     print("-" * 130)
     header = (f"{'System A (ref)':<22} {'System B (target)':<22} {'A pref':>8} {'No pref':>8} {'B pref':>8} "
-              f"{'±95% CI':>8} {'N':>5} {'B>A (SplitTie)':>16} {'A>B (SplitTie)':>16}")
+              f"{'±95% CI':>8} {'N':>5} {f'B>A ({test_label})':>16} {f'A>B ({test_label})':>16}")
     print(header)
     print("-" * 130)
 
@@ -323,8 +359,8 @@ def print_preference_results(pref_results):
         b_str  = f"{data['b_pref_ratio']:.1%}" if data['b_pref_ratio'] is not None else "N/A"
         ci_str = (f"{(data['ci_high'] - data['ci_low']) / 2:.1%}"
                   if data['ci_low'] is not None else "N/A")
-        s_str   = _p_cell(data['p_split_ties'])
-        sa_str  = _p_cell(data['p_split_ties_a_gt_b'])
+        s_str   = _p_cell(data['p_b_gt_a'])
+        sa_str  = _p_cell(data['p_a_gt_b'])
 
         print(f"{data['ref_system']:<22} {data['target_system']:<22} {a_str:>8} {n_str:>8} {b_str:>8} "
               f"{ci_str:>8} {data['n_samples']:>5} {s_str:>16} {sa_str:>16}")
@@ -360,7 +396,7 @@ def plot_preference_results(pref_results, output_file='preference_plot.png'):
     ref_display = {'Qwen3-TTS': 'Qwen3-TTS-VD'}
 
     def _sig_superscript(p_b_gt_a, p_a_gt_b):
-        # Golden metric for significance: split-tie binomial test.
+        # Significance metric selected by the CLI tie-handling mode.
         # '*' marks B significantly preferred over A; '+' marks A significantly preferred over B.
         marks = ''
         if p_b_gt_a < 0.05:
@@ -375,7 +411,7 @@ def plot_preference_results(pref_results, output_file='preference_plot.png'):
         pairs = sorted(pairs, key=lambda p: (p['ref_system'] == 'GroundTruth', p['ref_system']))
         n = len(pairs)
         labels = [ref_display.get(p['ref_system'], p['ref_system'])
-                  + _sig_superscript(p['p_split_ties'], p['p_split_ties_a_gt_b'])
+                  + _sig_superscript(p['p_b_gt_a'], p['p_a_gt_b'])
                   for p in pairs]
         wins   = [p['b_pref_ratio'] for p in pairs]
         ties   = [p['no_pref_ratio'] for p in pairs]
@@ -446,10 +482,15 @@ def save_preference_to_csv(pref_results, output_file='preference_results.csv'):
             'no_pref_ratio': data['no_pref_ratio'],
             'b_pref_ratio': data['b_pref_ratio'],
             'n_samples': data['n_samples'],
+            'tie_handling': data['tie_handling'],
+            'p_b_gt_a': data['p_b_gt_a'],
+            'sig_b_gt_a': significance_stars(data['p_b_gt_a']),
+            'p_a_gt_b': data['p_a_gt_b'],
+            'sig_a_gt_b': significance_stars(data['p_a_gt_b']),
             'p_split_ties_b_gt_a': data['p_split_ties'],
-            'sig_b_gt_a': significance_stars(data['p_split_ties']),
             'p_split_ties_a_gt_b': data['p_split_ties_a_gt_b'],
-            'sig_a_gt_b': significance_stars(data['p_split_ties_a_gt_b']),
+            'p_drop_ties_b_gt_a': data['p_drop_ties'],
+            'p_drop_ties_a_gt_b': data['p_drop_ties_a_gt_b'],
             'ci_low': data['ci_low'],
             'ci_high': data['ci_high'],
         })
@@ -515,14 +556,19 @@ def winning_utterances(results, ref_system, target_system, output_file=None):
     return winners
 
 
-def main(directory_path, wer_directory=None):
+def main(directory_path, wer_directory=None, tie_handling='split'):
     """Main analysis function"""
     valid_results = load_and_filter_json_files(directory_path)
 
-    output_suffix = ''
+    output_suffix_parts = []
     if wer_directory is not None:
         valid_results = filter_equal_wer_results(valid_results, wer_directory)
-        output_suffix = '_equal_wer'
+        output_suffix_parts.append('equal_wer')
+    if tie_handling == 'drop':
+        output_suffix_parts.append('drop_ties')
+    output_suffix = (
+        f"_{'_'.join(output_suffix_parts)}" if output_suffix_parts else ''
+    )
 
     test_counts = defaultdict(int)
     for result in valid_results:
@@ -532,7 +578,7 @@ def main(directory_path, wer_directory=None):
     for test_type, count in test_counts.items():
         print(f"  {test_type}: {count}")
 
-    pref_results = analyze_preference(valid_results)
+    pref_results = analyze_preference(valid_results, tie_handling=tie_handling)
     print_preference_results(pref_results)
     save_preference_to_csv(
         pref_results,
@@ -570,12 +616,23 @@ if __name__ == "__main__":
             'only judgments whose two samples have exactly equal WER are analyzed.'
         ),
     )
+    parser.add_argument(
+        '--tie_handling', '--tie-handling',
+        dest='tie_handling',
+        choices=('split', 'drop'),
+        default='split',
+        help=(
+            "How ties enter the binomial significance test: 'split' counts "
+            "each tie as half a vote per side; 'drop' excludes ties"
+        ),
+    )
     args = parser.parse_args()
 
     try:
         pref_results = main(
             args.directory_path,
             wer_directory=args.wer_directory,
+            tie_handling=args.tie_handling,
         )
     except Exception as e:
         print(f"Error: {e}")
